@@ -1,52 +1,84 @@
 // ─── Player: momentum-based platformer character ───
+// Tuned for Super Meat Boy-level tightness
 const Player = {
-  // Position & size
+  // ── Hitbox (collision) ──
   x: 100, y: 300,
   w: 14, h: 28,
 
-  // Velocity
+  // ── Sprite rendering (visual, larger than hitbox) ──
+  spriteW: 32, spriteH: 32,
+  spriteOffsetX: -9,   // from hitbox left to sprite left
+  spriteOffsetY: -4,   // from hitbox top to sprite top
+
+  // ── Velocity ──
   vx: 0, vy: 0,
 
-  // Movement tuning — inspired by N / Fancy Pants feel
-  groundAccel: 2800,
-  airAccel: 1800,
-  groundFriction: 12,
-  airFriction: 2,
-  maxRunSpeed: 320,
-  maxFallSpeed: 700,
+  // ── Movement tuning — SMB-tight ──
+  groundAccel: 4000,     // near-instant top speed (was 2800)
+  airAccel: 2800,        // ~70% of ground (responsive air control)
+  groundFriction: 16,    // snappy stop
+  airFriction: 1.5,      // minimal air drag
+  maxRunSpeed: 340,
+  maxFallSpeed: 720,
 
-  // Jump tuning
-  jumpForce: -460,
-  jumpCutMultiplier: 0.4,   // release early = short hop
-  gravity: 1400,
+  // ── Jump tuning ──
+  jumpForce: -480,
+  jumpCutMultiplier: 0.35,   // release early = short hop
+  gravityUp: 1300,           // gravity while rising (lighter, floaty arc)
+  gravityDown: 2100,         // gravity while falling (1.6x — snappy descent)
 
-  // Wall mechanics
+  // ── Wall mechanics ──
   wallSlideSpeed: 80,
-  wallJumpForce: { x: 340, y: -420 },
-  wallStickTime: 0.06,      // brief stick before sliding
+  wallJumpForce: { x: 360, y: -440 },
+  wallStickTime: 0.06,
 
-  // Coyote time / jump buffer
-  coyoteTime: 0.08,
+  // ── Coyote time / jump buffer (tightened) ──
+  coyoteTime: 0.06,      // ~7 frames at 120Hz
   coyoteTimer: 0,
 
-  // State
+  // ── Corner correction ──
+  cornerCorrectionMax: 5, // pixels — nudge up to 5px to clear corners
+
+  // ── Ledge assist ──
+  ledgeAssist: 2,         // extra pixels for ground check width
+
+  // ── State ──
   grounded: false,
-  wallDir: 0,               // -1 left wall, 1 right wall, 0 none
+  wasGrounded: false,     // for coyote: only grant when walking off, not jumping off
+  wallDir: 0,
   wallStickTimer: 0,
   facing: 1,
   jumpHeld: false,
 
-  // Animation state
-  squash: 1,                // 1 = normal, <1 = squashed, >1 = stretched
+  // ── Animation state ──
+  squash: 1,
   squashTarget: 1,
   trail: [],
+  animState: 'idle',
+  animTimer: 0,
+  animFrame: 0,
 
-  // Dash
+  // Animation definitions: { frames: [indices], duration: ms per frame, loop: bool, next: state }
+  anims: {
+    idle:      { frames: [0], duration: 0.15, loop: true },
+    run:       { frames: [1, 2, 3, 4, 5, 6], duration: 0.07, loop: true },
+    jump:      { frames: [7, 8], duration: 0.08, loop: false, next: 'fall' },
+    fall:      { frames: [9], duration: 0.1, loop: true },
+    wallSlide: { frames: [10], duration: 0.1, loop: true },
+    land:      { frames: [11, 0], duration: 0.04, loop: false, next: 'idle' },
+    dash:      { frames: [12], duration: 0.1, loop: true },
+  },
+
+  // ── Sprite sheet (null = use rect fallback) ──
+  spriteSheet: null,
+  spriteColumns: 8,  // columns in spritesheet grid
+
+  // ── Dash ──
   canDash: true,
   dashing: false,
   dashTimer: 0,
   dashDuration: 0.12,
-  dashSpeed: 700,
+  dashSpeed: 720,
 
   spawn(x, y) {
     this.x = x;
@@ -54,7 +86,37 @@ const Player = {
     this.vx = 0;
     this.vy = 0;
     this.grounded = false;
+    this.wasGrounded = false;
     this.coyoteTimer = 0;
+    this.dashing = false;
+    this.canDash = true;
+    this.setAnim('fall');
+  },
+
+  setAnim(state) {
+    if (this.animState === state) return;
+    this.animState = state;
+    this.animTimer = 0;
+    this.animFrame = 0;
+  },
+
+  updateAnim(dt) {
+    const anim = this.anims[this.animState];
+    if (!anim) return;
+
+    this.animTimer += dt;
+    if (this.animTimer >= anim.duration) {
+      this.animTimer -= anim.duration;
+      this.animFrame++;
+      if (this.animFrame >= anim.frames.length) {
+        if (anim.loop) {
+          this.animFrame = 0;
+        } else {
+          this.animFrame = anim.frames.length - 1;
+          if (anim.next) this.setAnim(anim.next);
+        }
+      }
+    }
   },
 
   update(dt) {
@@ -78,7 +140,7 @@ const Player = {
       this.vx = this.facing * this.dashSpeed;
       this.vy = 0;
       this.squash = 0.5;
-      // Dash particles
+      this.setAnim('dash');
       for (let i = 0; i < 8; i++) {
         Particles.emit(
           this.x + this.w / 2, this.y + this.h / 2,
@@ -95,10 +157,10 @@ const Player = {
         this.dashing = false;
         this.vx *= 0.6;
       }
-      // During dash: no gravity, no friction
       this.x += this.vx * dt;
       this.y += this.vy * dt;
       this.resolveCollisions();
+      this.updateAnim(dt);
       return;
     }
 
@@ -108,18 +170,18 @@ const Player = {
 
     if (moveDir !== 0) {
       this.vx += moveDir * accel * dt;
-      // Clamp to max speed
       if (Math.abs(this.vx) > this.maxRunSpeed) {
         this.vx = Math.sign(this.vx) * this.maxRunSpeed;
       }
     } else {
-      // Apply friction
       this.vx -= this.vx * friction * dt;
       if (Math.abs(this.vx) < 5) this.vx = 0;
     }
 
-    // ── Gravity ──
-    this.vy += this.gravity * dt;
+    // ── Asymmetric gravity ──
+    // Lighter on the way up (floaty arc), heavier on the way down (snappy)
+    const grav = (this.vy > 0 || !jumpHeldNow) ? this.gravityDown : this.gravityUp;
+    this.vy += grav * dt;
     if (this.vy > this.maxFallSpeed) this.vy = this.maxFallSpeed;
 
     // ── Wall slide ──
@@ -129,33 +191,25 @@ const Player = {
       }
     }
 
-    // ── Coyote time ──
+    // ── Coyote time (only when walking off, not jumping off) ──
     if (this.grounded) {
       this.coyoteTimer = this.coyoteTime;
     } else {
-      this.coyoteTimer -= dt;
+      if (this.wasGrounded && this.vy >= 0) {
+        // Just walked off a ledge — coyote time is valid
+      } else if (!this.wasGrounded) {
+        this.coyoteTimer -= dt;
+      }
     }
 
     // ── Jump ──
     if (jumpBuffered) {
-      if (this.coyoteTimer > 0) {
-        // Ground jump
-        this.vy = this.jumpForce;
-        this.coyoteTimer = 0;
-        this.grounded = false;
-        this.jumpHeld = true;
-        this.squash = 1.4;
-        Input.consumeBuffer('Space');
-        Input.consumeBuffer('ArrowUp');
-        Input.consumeBuffer('KeyW');
-        // Jump particles
-        for (let i = 0; i < 5; i++) {
-          Particles.emit(
-            this.x + Math.random() * this.w, this.y + this.h,
-            (Math.random() - 0.5) * 80, 40 + Math.random() * 40,
-            'rgba(255,255,255,0.4)', 0.15 + Math.random() * 0.1
-          );
-        }
+      if (this.coyoteTimer > 0 && !this.grounded && this.wasGrounded) {
+        // Coyote jump (walked off ledge)
+        this._doGroundJump();
+      } else if (this.grounded) {
+        // Normal ground jump
+        this._doGroundJump();
       } else if (this.wallDir !== 0) {
         // Wall jump
         this.vx = -this.wallDir * this.wallJumpForce.x;
@@ -163,10 +217,10 @@ const Player = {
         this.facing = -this.wallDir;
         this.jumpHeld = true;
         this.squash = 1.3;
+        this.setAnim('jump');
         Input.consumeBuffer('Space');
         Input.consumeBuffer('ArrowUp');
         Input.consumeBuffer('KeyW');
-        // Wall jump particles
         for (let i = 0; i < 5; i++) {
           Particles.emit(
             this.x + (this.wallDir > 0 ? this.w : 0), this.y + Math.random() * this.h,
@@ -185,14 +239,35 @@ const Player = {
     if (jumpHeldNow) this.jumpHeld = true;
 
     // ── Apply velocity ──
+    this.wasGrounded = this.grounded;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
 
-    // ── Resolve collisions ──
+    // ── Resolve collisions (with corner correction) ──
     this.resolveCollisions();
 
-    // ── Squash & stretch animation ──
-    this.squash += (this.squashTarget - this.squash) * 12 * dt;
+    // ── Update animation state ──
+    if (this.dashing) {
+      this.setAnim('dash');
+    } else if (this.grounded) {
+      if (!this.wasGrounded) {
+        this.setAnim('land');
+      } else if (Math.abs(this.vx) > 30) {
+        this.setAnim('run');
+      } else {
+        if (this.animState !== 'land') this.setAnim('idle');
+      }
+    } else if (this.wallDir !== 0 && this.vy > 0) {
+      this.setAnim('wallSlide');
+    } else if (this.vy < 0) {
+      if (this.animState !== 'jump') this.setAnim('jump');
+    } else {
+      this.setAnim('fall');
+    }
+    this.updateAnim(dt);
+
+    // ── Squash & stretch ──
+    this.squash += (this.squashTarget - this.squash) * 14 * dt;
     if (Math.abs(this.squash - this.squashTarget) < 0.01) this.squash = this.squashTarget;
     this.squashTarget = 1;
 
@@ -209,36 +284,70 @@ const Player = {
     if (this.grounded) this.canDash = true;
   },
 
+  _doGroundJump() {
+    this.vy = this.jumpForce;
+    this.coyoteTimer = 0;
+    this.grounded = false;
+    this.jumpHeld = true;
+    this.squash = 1.4;
+    this.setAnim('jump');
+    Input.consumeBuffer('Space');
+    Input.consumeBuffer('ArrowUp');
+    Input.consumeBuffer('KeyW');
+    for (let i = 0; i < 5; i++) {
+      Particles.emit(
+        this.x + Math.random() * this.w, this.y + this.h,
+        (Math.random() - 0.5) * 80, 40 + Math.random() * 40,
+        'rgba(255,255,255,0.4)', 0.15 + Math.random() * 0.1
+      );
+    }
+  },
+
   resolveCollisions() {
     this.grounded = false;
     this.wallDir = 0;
 
     const tiles = Level.getTilesNear(this.x, this.y, this.w, this.h);
 
+    // ── Pass 1: Resolve X axis ──
     for (const tile of tiles) {
-      // AABB overlap
       const overlapX = Math.min(this.x + this.w, tile.x + tile.w) - Math.max(this.x, tile.x);
       const overlapY = Math.min(this.y + this.h, tile.y + tile.h) - Math.max(this.y, tile.y);
-
       if (overlapX <= 0 || overlapY <= 0) continue;
 
-      // Resolve along the smallest axis
+      // Only resolve if this is primarily a horizontal collision
       if (overlapX < overlapY) {
-        // Horizontal
         const pushDir = (this.x + this.w / 2) < (tile.x + tile.w / 2) ? -1 : 1;
         this.x += pushDir * overlapX;
         this.vx = 0;
         this.wallDir = -pushDir;
-        this.wallStickTimer = this.wallStickTime;
-      } else {
-        // Vertical
+      }
+    }
+
+    // ── Pass 2: Resolve Y axis with corner correction ──
+    for (const tile of tiles) {
+      const overlapX = Math.min(this.x + this.w, tile.x + tile.w) - Math.max(this.x, tile.x);
+      const overlapY = Math.min(this.y + this.h, tile.y + tile.h) - Math.max(this.y, tile.y);
+      if (overlapX <= 0 || overlapY <= 0) continue;
+
+      // Vertical collision
+      if (overlapY <= overlapX) {
         const pushDir = (this.y + this.h / 2) < (tile.y + tile.h / 2) ? -1 : 1;
+
+        // ── Corner correction ──
+        // If horizontal overlap is small, nudge the player sideways instead of blocking
+        if (overlapX <= this.cornerCorrectionMax && overlapX > 0) {
+          const nudgeDir = (this.x + this.w / 2) < (tile.x + tile.w / 2) ? -1 : 1;
+          this.x += nudgeDir * overlapX;
+          continue; // Skip vertical resolution — we nudged past the corner
+        }
+
         this.y += pushDir * overlapY;
+
         if (pushDir === -1) {
           // Landed
           if (this.vy > 200) {
             this.squash = 0.6;
-            // Land particles
             for (let i = 0; i < 4; i++) {
               Particles.emit(
                 this.x + Math.random() * this.w, this.y + this.h,
@@ -250,8 +359,45 @@ const Player = {
           this.grounded = true;
           this.vy = 0;
         } else {
-          // Hit ceiling
-          this.vy = 0;
+          // ── Ceiling corner correction ──
+          // If we bonk a ceiling and are close to the edge, nudge sideways
+          if (overlapX <= this.cornerCorrectionMax && overlapX > 0) {
+            const nudgeDir = (this.x + this.w / 2) < (tile.x + tile.w / 2) ? -1 : 1;
+            this.x += nudgeDir * overlapX;
+          } else {
+            this.vy = 0;
+          }
+        }
+      }
+    }
+
+    // ── Ledge assist: extended ground check ──
+    // Check 1-2px wider than hitbox for ground, so near-misses still land
+    if (!this.grounded) {
+      const footY = this.y + this.h;
+      const extL = this.x - this.ledgeAssist;
+      const extR = this.x + this.w + this.ledgeAssist;
+
+      for (const tile of tiles) {
+        // Check if foot is right at the top of a tile (within 2px)
+        if (Math.abs(footY - tile.y) < 2) {
+          // Check if the extended foot overlaps the tile horizontally
+          if (extR > tile.x && extL < tile.x + tile.w) {
+            // Check if the actual hitbox doesn't overlap (meaning only the assist does)
+            const actualOverlapX = Math.min(this.x + this.w, tile.x + tile.w) - Math.max(this.x, tile.x);
+            if (actualOverlapX <= 0) {
+              // Nudge player onto the platform
+              if (this.x + this.w / 2 < tile.x + tile.w / 2) {
+                this.x = tile.x - this.w;
+              } else {
+                this.x = tile.x + tile.w;
+              }
+              this.y = tile.y - this.h;
+              this.grounded = true;
+              this.vy = 0;
+              break;
+            }
+          }
         }
       }
     }
@@ -264,33 +410,73 @@ const Player = {
       ctx.fillRect(t.x - 3, t.y - 3, 6, 6);
     }
 
-    // Player body with squash & stretch
+    // Squash & stretch transform origin = bottom center of hitbox (feet planted)
     const cx = this.x + this.w / 2;
-    const cy = this.y + this.h;
-    const sw = this.w * (1 / this.squash);
-    const sh = this.h * this.squash;
+    const bottomY = this.y + this.h;
+    const stretchX = 1 / this.squash;
+    const stretchY = this.squash;
 
     ctx.save();
-    ctx.translate(cx, cy);
+    ctx.translate(cx, bottomY);
+    ctx.scale(this.facing, 1); // flip horizontally based on facing
+    ctx.scale(stretchX, stretchY);
+    ctx.translate(-cx, -bottomY);
 
-    // Body
-    ctx.fillStyle = '#e8e8f0';
-    ctx.fillRect(-sw / 2, -sh, sw, sh);
+    if (this.spriteSheet) {
+      // ── Sprite rendering ──
+      const anim = this.anims[this.animState];
+      const frameIdx = anim ? anim.frames[this.animFrame] : 0;
+      const col = frameIdx % this.spriteColumns;
+      const row = Math.floor(frameIdx / this.spriteColumns);
+      const sx = col * this.spriteW;
+      const sy = row * this.spriteH;
+      const dx = this.x + this.spriteOffsetX;
+      const dy = this.y + this.spriteOffsetY;
 
-    // Eyes
-    const eyeY = -sh * 0.7;
-    const eyeSpacing = sw * 0.22;
-    ctx.fillStyle = '#1a1a2e';
-    ctx.fillRect(-eyeSpacing - 2, eyeY, 3, 4);
-    ctx.fillRect(eyeSpacing, eyeY, 3, 4);
-
-    // Direction indicator (little dash in facing direction)
-    if (Math.abs(this.vx) > 30) {
-      ctx.fillStyle = 'rgba(200, 220, 255, 0.5)';
-      const ix = this.facing * sw / 2;
-      ctx.fillRect(ix, -sh * 0.5, this.facing * 4, 2);
+      ctx.drawImage(
+        this.spriteSheet,
+        sx, sy, this.spriteW, this.spriteH,
+        Math.round(dx), Math.round(dy), this.spriteW, this.spriteH
+      );
+    } else {
+      // ── Rect fallback (no spritesheet loaded) ──
+      this._drawRectFallback(ctx);
     }
 
     ctx.restore();
+  },
+
+  _drawRectFallback(ctx) {
+    // Body
+    ctx.fillStyle = '#e8e8f0';
+    ctx.fillRect(this.x, this.y, this.w, this.h);
+
+    // Eyes (positioned relative to hitbox)
+    const eyeY = this.y + this.h * 0.25;
+    const midX = this.x + this.w / 2;
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(midX - 4, eyeY, 3, 4);
+    ctx.fillRect(midX + 1, eyeY, 3, 4);
+
+    // Speed lines when moving fast
+    if (Math.abs(this.vx) > 200) {
+      const alpha = Math.min(0.5, (Math.abs(this.vx) - 200) / 300);
+      ctx.fillStyle = `rgba(200, 220, 255, ${alpha})`;
+      for (let i = 0; i < 3; i++) {
+        const ly = this.y + 4 + i * 10;
+        ctx.fillRect(this.x - this.facing * (4 + i * 3), ly, 6, 1);
+      }
+    }
+  },
+
+  // Load a spritesheet image. Call with an Image element or a URL string.
+  loadSprite(src) {
+    if (typeof src === 'string') {
+      const img = new Image();
+      img.onload = () => { this.spriteSheet = img; };
+      img.src = src;
+    } else {
+      this.spriteSheet = src;
+    }
   }
 };
