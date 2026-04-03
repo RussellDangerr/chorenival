@@ -9,6 +9,7 @@ const Engine = {
   accumulator: 0,
   lastTime: 0,
   running: false,
+  hitstopTimer: 0,         // freeze frames for impact feel
   systems: [],             // objects with update(dt) and/or draw(ctx)
 
   init() {
@@ -45,6 +46,12 @@ const Engine = {
     if (frameTime > 0.1) frameTime = 0.1;
     this.accumulator += frameTime;
 
+    // Hitstop: skip physics updates during freeze frames
+    if (this.hitstopTimer > 0) {
+      this.hitstopTimer -= frameTime;
+      this.accumulator = 0;
+    }
+
     let steps = 0;
     while (this.accumulator >= this.fixedDt && steps < this.maxStepsPerFrame) {
       for (const sys of this.systems) {
@@ -61,6 +68,10 @@ const Engine = {
     }
 
     requestAnimationFrame(t => this.loop(t));
+  },
+
+  hitstop(duration) {
+    this.hitstopTimer = duration;
   },
 
   register(system) {

@@ -67,6 +67,7 @@ const Player = {
     wallSlide: { frames: [10], duration: 0.1, loop: true },
     land:      { frames: [11, 0], duration: 0.04, loop: false, next: 'idle' },
     dash:      { frames: [12], duration: 0.1, loop: true },
+    death:     { frames: [13], duration: 0.1, loop: true },
   },
 
   // ── Sprite sheet (null = use rect fallback) ──
@@ -80,6 +81,20 @@ const Player = {
   dashDuration: 0.12,
   dashSpeed: 720,
 
+  // ── Death & respawn ──
+  dead: false,
+  deathTimer: 0,
+  deathDuration: 0.6,       // seconds before respawn
+  respawning: false,
+  respawnTimer: 0,
+  respawnDuration: 0.3,     // brief invuln flash after respawn
+  deathCount: 0,
+  checkpointX: 0,
+  checkpointY: 0,
+
+  // ── Hazard hitbox (smaller than platform hitbox for forgiving near-misses) ──
+  hazardShrink: 3,          // pixels inset on each side
+
   spawn(x, y) {
     this.x = x;
     this.y = y;
@@ -90,7 +105,42 @@ const Player = {
     this.coyoteTimer = 0;
     this.dashing = false;
     this.canDash = true;
+    this.dead = false;
+    this.deathTimer = 0;
+    this.respawning = true;
+    this.respawnTimer = this.respawnDuration;
     this.setAnim('fall');
+  },
+
+  die() {
+    if (this.dead || this.respawning) return;
+    this.dead = true;
+    this.deathTimer = this.deathDuration;
+    this.deathCount++;
+    this.vx = 0;
+    this.vy = 0;
+    this.setAnim('death');
+    Camera.shake(6);
+    // Death burst particles
+    Particles.burst(
+      this.x + this.w / 2, this.y + this.h / 2,
+      20, 250, 'rgba(255, 80, 80, 0.8)', 0.4
+    );
+    Particles.burst(
+      this.x + this.w / 2, this.y + this.h / 2,
+      10, 150, 'rgba(255, 255, 255, 0.6)', 0.3
+    );
+    // Hitstop: freeze the game for a few frames
+    Engine.hitstop(0.05);
+  },
+
+  respawn() {
+    this.spawn(this.checkpointX, this.checkpointY);
+  },
+
+  setCheckpoint(x, y) {
+    this.checkpointX = x;
+    this.checkpointY = y;
   },
 
   setAnim(state) {
@@ -120,6 +170,24 @@ const Player = {
   },
 
   update(dt) {
+    // ── Death state: frozen, waiting to respawn ──
+    if (this.dead) {
+      this.deathTimer -= dt;
+      if (this.deathTimer <= 0) {
+        this.respawn();
+      }
+      this.updateAnim(dt);
+      return;
+    }
+
+    // ── Respawn invulnerability tick-down ──
+    if (this.respawning) {
+      this.respawnTimer -= dt;
+      if (this.respawnTimer <= 0) {
+        this.respawning = false;
+      }
+    }
+
     const leftHeld = Input.held('ArrowLeft') || Input.held('KeyA');
     const rightHeld = Input.held('ArrowRight') || Input.held('KeyD');
     const jumpBuffered = Input.buffered('Space') || Input.buffered('ArrowUp') || Input.buffered('KeyW');
@@ -245,6 +313,9 @@ const Player = {
 
     // ── Resolve collisions (with corner correction) ──
     this.resolveCollisions();
+
+    // ── Check hazard collisions (with smaller hitbox) ──
+    this.checkHazards();
 
     // ── Update animation state ──
     if (this.dashing) {
@@ -403,7 +474,28 @@ const Player = {
     }
   },
 
+  checkHazards() {
+    if (this.dead || this.respawning) return;
+    const hazards = Level.getHazards();
+    // Use a smaller hitbox for hazard checks (more forgiving)
+    const hx = this.x + this.hazardShrink;
+    const hy = this.y + this.hazardShrink;
+    const hw = this.w - this.hazardShrink * 2;
+    const hh = this.h - this.hazardShrink * 2;
+
+    for (const haz of hazards) {
+      if (hx + hw > haz.x && hx < haz.x + haz.w &&
+          hy + hh > haz.y && hy < haz.y + haz.h) {
+        this.die();
+        return;
+      }
+    }
+  },
+
   draw(ctx) {
+    // Don't draw during death (particles handle the visual)
+    if (this.dead) return;
+
     // Trail
     for (const t of this.trail) {
       ctx.fillStyle = `rgba(200, 220, 255, ${t.alpha * 0.3})`;
@@ -415,6 +507,12 @@ const Player = {
     const bottomY = this.y + this.h;
     const stretchX = 1 / this.squash;
     const stretchY = this.squash;
+
+    // Respawn invuln flash
+    if (this.respawning) {
+      const flash = Math.sin(this.respawnTimer * 30) > 0;
+      if (flash) return; // blink invisible every other frame
+    }
 
     ctx.save();
     ctx.translate(cx, bottomY);
