@@ -121,6 +121,7 @@ const Player = {
     this.vy = 0;
     this.setAnim('death');
     Camera.shake(6);
+    Audio.die();
     // Death burst particles
     Particles.burst(
       this.x + this.w / 2, this.y + this.h / 2,
@@ -209,6 +210,7 @@ const Player = {
       this.vy = 0;
       this.squash = 0.5;
       this.setAnim('dash');
+      Audio.dash();
       for (let i = 0; i < 8; i++) {
         Particles.emit(
           this.x + this.w / 2, this.y + this.h / 2,
@@ -286,6 +288,7 @@ const Player = {
         this.jumpHeld = true;
         this.squash = 1.3;
         this.setAnim('jump');
+        Audio.wallJump();
         Input.consumeBuffer('Space');
         Input.consumeBuffer('ArrowUp');
         Input.consumeBuffer('KeyW');
@@ -362,6 +365,7 @@ const Player = {
     this.jumpHeld = true;
     this.squash = 1.4;
     this.setAnim('jump');
+    Audio.jump();
     Input.consumeBuffer('Space');
     Input.consumeBuffer('ArrowUp');
     Input.consumeBuffer('KeyW');
@@ -419,6 +423,7 @@ const Player = {
           // Landed
           if (this.vy > 200) {
             this.squash = 0.6;
+            Audio.land();
             for (let i = 0; i < 4; i++) {
               Particles.emit(
                 this.x + Math.random() * this.w, this.y + this.h,
