@@ -97,6 +97,20 @@ const Audio = {
     setTimeout(() => this._tone(1047, 0.3, 'triangle', 0.25), 300);
   },
 
+  grab() {
+    this._tone(180, 0.08, 'triangle', 0.15);
+    this._noise(0.04, 0.1);
+  },
+
+  bounce() {
+    this._tone(400, 0.1, 'sine', 0.2, 800);
+  },
+
+  crumble() {
+    this._noise(0.15, 0.18);
+    this._tone(100, 0.12, 'sawtooth', 0.1, 60);
+  },
+
   uiSelect() {
     this._tone(600, 0.06, 'square', 0.12);
   },

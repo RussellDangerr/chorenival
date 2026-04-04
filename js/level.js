@@ -11,6 +11,16 @@ const Level = {
   // 1 = solid, 0 = air, g = goal
   // ^ = spike (up), v = spike (down), < = spike (left), > = spike (right)
   // c = checkpoint, o = collectible (gem)
+  // Materials: B = bouncy, I = ice/slippery, S = sponge/grabbable, D = breakable (destructible)
+
+  // Material definitions: how each material affects physics and looks
+  materials: {
+    solid:     { friction: 1.0, bounce: 0, grabbable: false, breakable: false, color: null },
+    bouncy:    { friction: 0.8, bounce: 0.7, grabbable: false, breakable: false, color: ['#2a6630', '#338844', '#44aa55'] },
+    ice:       { friction: 0.15, bounce: 0, grabbable: false, breakable: false, color: ['#3a5a7a', '#4a7a9a', '#6a9abb'] },
+    sponge:    { friction: 1.5, bounce: 0, grabbable: true, breakable: false, color: ['#7a5a2a', '#9a7a3a', '#bb9a55'] },
+    breakable: { friction: 1.0, bounce: 0, grabbable: false, breakable: true, color: ['#5a4a3a', '#6a5a4a', '#7a6a5a'], breakTime: 0.4 },
+  },
   // Theme palettes used by draw()
   themes: {
     circus: {
@@ -97,7 +107,7 @@ const Level = {
         '1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001',
         '1111111111111111111100000000000000000000000000000000000000000000000000000000000000000000000000000000000000001',
         '100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000^1',
-        '1111111111111111111111^^11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111',
+        '11111111111111BBB11111^^1111III11111111111111111111111111111111DDD11111111111111SSS1111111111111111111111111111111',
       ]
     },
     {
@@ -133,13 +143,13 @@ const Level = {
         '1000000000000000000000000000000000000011100000000000000000000000000001000000001',
         '10000000000000000000000000000000000000000o00000000000000000000c0000001000000001',
         '10000000000000000000000000000000001000000000000000000000000011110000001000000001',
-        '100000000000000000000000001110000000000000000000000^^^^^^^^^^^^^^^^^0001000000001',
-        '10000000000000000000000000000000000000000000000000011111111111111111111000000001',
+        '100000000000000000000000001110000000000000000000000^^^^^^^^^^^^^^^^^000S000000001',
+        '1000000000000000000000000000000000000000000000000001111III1111111111111S000000001',
         '100000000000000000001100000000000000000000000000000000000000000000000000000000^1',
         '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
         '10000011100000000000000000000000000000000000000000000000000000000000000000000001',
         '1000000000000000000000000000000000000000000000000000000000000000000000000000000^1',
-        '11111111111111111111111111111111111111111111111111111111111111111111111111111111',
+        '111111111BBB111111111111111111111DDD111111111111111111111111111111111111111111111',
       ]
     },
     {
@@ -164,27 +174,27 @@ const Level = {
         '100000000000000000000000000g000000000000000000000000000001',
         '100000000000000000000000011111100000000000000000000000000001',
         '100000000000000000000000000000000000000000000000000000000001',
-        '1>00000000000000000000000000000000000000000000000000000o0<1',
+        'S>00000000000000000000000000000000000000000000000000000o0<S',
         '100000000000000000000011000000000001100000000000000000000001',
         '100000000000000000000000000o00000000000000000000000000000001',
         '10000000c000000000000000000000000000000000000000000000000001',
         '100000011100000000000000000000000000000000000000011100000001',
         '100000000000000000000000000000000000000000000000000000000001',
-        '1>0000000000000001100000000000000000001100000000000000000<1',
+        'S>0000000000000001100000000000000000001100000000000000000<S',
         '10000000000000000000000o000000000000000000o00000000000000001',
         '100000000000000000000000000000000000000000000000000000000001',
         '100000000000000000000000001110000000000000000000000000000001',
         '10000000000000000000000000000o0000000000000000000000000000001',
-        '1>000000000000000000000000000000000000000000000000000000c0<1',
+        'S>000000000000000000000000000000000000000000000000000000c0<S',
         '10000000011000000000000000000000000000000000000011000000001',
         '100000000000000000000000000000000000000000000000000000000001',
         '100000000000000000000000000000000000000000000000000000000001',
         '100000000000000001110000000000000000001110000000000000000001',
         '100000000000000000000000000000000000000000000000000000000001',
         '100000000000000000000000000000000000000000000000000000000001',
-        '100000000000000000000000000001100000000000000000000000000001',
+        '100000000000000000000000000BB1100000000000000000000000000001',
         '100000000000000000000000000000000000000000000000000000000001',
-        '1111111111111111111100000000000000000000011111111111111111^1',
+        '111111111111111DDD1110000000000000000000011111111III11111^1',
         '111111111111111111111111^^111111111111111111111111111111111',
       ]
     }
@@ -208,6 +218,7 @@ const Level = {
     this.spawnY = map.spawn[1] * this.tileSize;
 
     const spikeDirections = { '^': 'up', 'v': 'down', '<': 'left', '>': 'right' };
+    const materialMap = { 'B': 'bouncy', 'I': 'ice', 'S': 'sponge', 'D': 'breakable' };
 
     for (let row = 0; row < data.length; row++) {
       for (let col = 0; col < data[row].length; col++) {
@@ -216,7 +227,14 @@ const Level = {
         const ty = row * this.tileSize;
 
         if (ch === '1') {
-          this.tiles.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, type: 'solid' });
+          this.tiles.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, type: 'solid', material: 'solid' });
+        } else if (materialMap[ch]) {
+          const mat = materialMap[ch];
+          this.tiles.push({
+            x: tx, y: ty, w: this.tileSize, h: this.tileSize,
+            type: 'solid', material: mat,
+            breaking: false, breakTimer: 0, broken: false
+          });
         } else if (ch === 'g') {
           this.tiles.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, type: 'goal' });
         } else if (spikeDirections[ch]) {
@@ -249,11 +267,48 @@ const Level = {
     const result = [];
     for (const tile of this.tiles) {
       if (tile.type !== 'solid') continue;
+      if (tile.broken) continue; // skip destroyed breakable tiles
       if (tile.x + tile.w + margin < px || tile.x - margin > px + pw) continue;
       if (tile.y + tile.h + margin < py || tile.y - margin > py + ph) continue;
       result.push(tile);
     }
     return result;
+  },
+
+  // Update breakable tiles (called from game loop)
+  updateBreakables(dt) {
+    for (const tile of this.tiles) {
+      if (tile.material !== 'breakable' || tile.broken) continue;
+      if (tile.breaking) {
+        tile.breakTimer -= dt;
+        if (tile.breakTimer <= 0) {
+          tile.broken = true;
+          // Crumble particles
+          Particles.burst(
+            tile.x + tile.w / 2, tile.y + tile.h / 2,
+            12, 120, 'rgba(120,100,80,0.7)', 0.4
+          );
+        }
+      }
+    }
+  },
+
+  // Start breaking a tile (called when player stands on it)
+  startBreaking(tile) {
+    if (tile.material !== 'breakable' || tile.breaking || tile.broken) return;
+    tile.breaking = true;
+    tile.breakTimer = this.materials.breakable.breakTime;
+  },
+
+  // Get material for a tile at a position (for physics lookups)
+  getMaterialAt(x, y) {
+    for (const tile of this.tiles) {
+      if (tile.type !== 'solid' || tile.broken) continue;
+      if (x >= tile.x && x < tile.x + tile.w && y >= tile.y && y < tile.y + tile.h) {
+        return tile.material || 'solid';
+      }
+    }
+    return null;
   },
 
   getGoals() {
@@ -335,15 +390,64 @@ const Level = {
     // Draw tiles
     for (const tile of this.tiles) {
       if (tile.type === 'solid') {
+        // Skip broken breakable tiles
+        if (tile.broken) continue;
+
+        const mat = tile.material && Level.materials[tile.material];
+        const colors = (mat && mat.color) ? mat.color : theme.tile;
+
         // Main tile
-        ctx.fillStyle = theme.tile[0];
+        ctx.fillStyle = colors[0];
         ctx.fillRect(tile.x, tile.y, tile.w, tile.h);
         // Inner highlight
-        ctx.fillStyle = theme.tile[1];
+        ctx.fillStyle = colors[1];
         ctx.fillRect(tile.x + 1, tile.y + 1, tile.w - 2, tile.h - 2);
         // Top edge highlight
-        ctx.fillStyle = theme.tile[2];
+        ctx.fillStyle = colors[2];
         ctx.fillRect(tile.x + 1, tile.y + 1, tile.w - 2, 2);
+
+        // Material-specific visual indicators
+        if (tile.material === 'bouncy') {
+          // Spring arrows
+          ctx.fillStyle = 'rgba(255,255,255,0.2)';
+          const cx = tile.x + tile.w / 2;
+          ctx.beginPath();
+          ctx.moveTo(cx - 6, tile.y + 12);
+          ctx.lineTo(cx, tile.y + 4);
+          ctx.lineTo(cx + 6, tile.y + 12);
+          ctx.fill();
+        } else if (tile.material === 'ice') {
+          // Shine streaks
+          ctx.fillStyle = 'rgba(200,230,255,0.15)';
+          ctx.fillRect(tile.x + 4, tile.y + 6, 10, 1);
+          ctx.fillRect(tile.x + 14, tile.y + 14, 12, 1);
+          ctx.fillRect(tile.x + 6, tile.y + 22, 8, 1);
+        } else if (tile.material === 'sponge') {
+          // Porous dots
+          ctx.fillStyle = 'rgba(0,0,0,0.15)';
+          for (let dx = 5; dx < tile.w; dx += 8) {
+            for (let dy = 5; dy < tile.h; dy += 8) {
+              ctx.fillRect(tile.x + dx, tile.y + dy, 2, 2);
+            }
+          }
+        } else if (tile.material === 'breakable') {
+          // Crack lines
+          ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(tile.x + 8, tile.y);
+          ctx.lineTo(tile.x + 16, tile.y + 16);
+          ctx.lineTo(tile.x + 24, tile.y + 10);
+          ctx.moveTo(tile.x + 4, tile.y + 20);
+          ctx.lineTo(tile.x + 14, tile.y + 28);
+          ctx.stroke();
+          // Flash when breaking
+          if (tile.breaking) {
+            const flash = Math.sin(tile.breakTimer * 20) * 0.15 + 0.1;
+            ctx.fillStyle = `rgba(255,255,255,${flash})`;
+            ctx.fillRect(tile.x, tile.y, tile.w, tile.h);
+          }
+        }
       } else if (tile.type === 'spike') {
         // Draw spike triangles
         ctx.fillStyle = '#dd3333';
@@ -401,7 +505,6 @@ const Level = {
     }
 
     // Draw collectibles (gems)
-    const theme = this.getTheme();
     const gc = theme.goalColor;
     for (const col of this.collectibles) {
       if (col.collected) continue;

@@ -182,6 +182,9 @@ const Game = {
   updatePlaying(dt) {
     this.levelTimer += dt;
 
+    // Update breakable tiles
+    Level.updateBreakables(dt);
+
     if (Input.pressed('Escape') || Input.pressed('KeyP')) {
       this.state = 'paused';
       return;
@@ -368,7 +371,7 @@ const Game = {
 
     ctx.fillStyle = 'rgba(150, 140, 130, 0.4)';
     ctx.font = '12px monospace';
-    ctx.fillText('ARROWS / WASD = move    SPACE = jump    SHIFT = dash    M = mute', Engine.width / 2, Engine.height - 40);
+    ctx.fillText('ARROWS/WASD = move   SPACE = jump   SHIFT = dash   E = grab   M = mute', Engine.width / 2, Engine.height - 40);
   },
 
   drawLevelSelect(ctx) {

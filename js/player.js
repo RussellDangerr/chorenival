@@ -67,6 +67,7 @@ const Player = {
     wallSlide: { frames: [10], duration: 0.1, loop: true },
     land:      { frames: [11, 0], duration: 0.04, loop: false, next: 'idle' },
     dash:      { frames: [12], duration: 0.1, loop: true },
+    grab:      { frames: [10], duration: 0.1, loop: true },
     death:     { frames: [13], duration: 0.1, loop: true },
   },
 
@@ -95,6 +96,16 @@ const Player = {
   // ── Hazard hitbox (smaller than platform hitbox for forgiving near-misses) ──
   hazardShrink: 3,          // pixels inset on each side
 
+  // ── Grab mechanic (sponge surfaces) ──
+  grabbing: false,
+  grabTile: null,
+  grabDir: 0,               // -1 = left wall, 1 = right wall
+  grabSlingshotSpeed: 600,   // launch speed when releasing grab
+  grabSlingshotUp: -500,     // vertical boost on slingshot
+
+  // ── Material state ──
+  groundMaterial: 'solid',   // material of tile player is standing on
+
   spawn(x, y) {
     this.x = x;
     this.y = y;
@@ -105,6 +116,9 @@ const Player = {
     this.coyoteTimer = 0;
     this.dashing = false;
     this.canDash = true;
+    this.grabbing = false;
+    this.grabTile = null;
+    this.grabDir = 0;
     this.dead = false;
     this.deathTimer = 0;
     this.respawning = true;
@@ -194,6 +208,7 @@ const Player = {
     const jumpBuffered = Input.buffered('Space') || Input.buffered('ArrowUp') || Input.buffered('KeyW');
     const jumpHeldNow = Input.held('Space') || Input.held('ArrowUp') || Input.held('KeyW');
     const dashPressed = Input.pressed('ShiftLeft') || Input.pressed('ShiftRight') || Input.pressed('KeyZ');
+    const grabHeld = Input.held('KeyE') || Input.held('KeyX');
 
     let moveDir = 0;
     if (leftHeld) moveDir -= 1;
@@ -234,9 +249,80 @@ const Player = {
       return;
     }
 
+    // ── Grab mechanic (sponge surfaces) ──
+    if (this.grabbing) {
+      // Stick to the sponge wall
+      this.vx = 0;
+      this.vy = 0;
+      // Release: jump to slingshot, or just let go
+      if (!grabHeld) {
+        // Slingshot launch in the direction player is aiming
+        const aimX = moveDir !== 0 ? moveDir : -this.grabDir;
+        this.vx = aimX * this.grabSlingshotSpeed;
+        this.vy = this.grabSlingshotUp;
+        this.grabbing = false;
+        this.grabTile = null;
+        this.canDash = true;
+        this.squash = 1.4;
+        this.setAnim('jump');
+        Audio.wallJump();
+        // Slingshot particles
+        for (let i = 0; i < 8; i++) {
+          Particles.emit(
+            this.x + this.w / 2, this.y + this.h / 2,
+            -this.grabDir * (80 + Math.random() * 160),
+            (Math.random() - 0.5) * 120,
+            'rgba(180,150,80,0.6)', 0.2 + Math.random() * 0.15
+          );
+        }
+      } else if (jumpBuffered) {
+        // Jump off sponge wall (like wall jump but stronger)
+        this.vx = -this.grabDir * this.grabSlingshotSpeed;
+        this.vy = this.grabSlingshotUp;
+        this.grabbing = false;
+        this.grabTile = null;
+        this.canDash = true;
+        this.jumpHeld = true;
+        this.squash = 1.4;
+        this.setAnim('jump');
+        Audio.wallJump();
+        Input.consumeBuffer('Space');
+        Input.consumeBuffer('ArrowUp');
+        Input.consumeBuffer('KeyW');
+      }
+      if (this.grabbing) {
+        this.setAnim('grab');
+        this.updateAnim(dt);
+        this.checkHazards();
+        return;
+      }
+    }
+
+    // ── Try to initiate grab on sponge wall ──
+    if (grabHeld && !this.grounded && this.wallDir !== 0 && !this.grabbing) {
+      // Check if the wall tile is sponge material
+      const checkX = this.wallDir > 0 ? this.x + this.w + 2 : this.x - 2;
+      const checkY = this.y + this.h / 2;
+      const wallMat = Level.getMaterialAt(checkX, checkY);
+      if (wallMat === 'sponge') {
+        this.grabbing = true;
+        this.grabDir = this.wallDir;
+        this.facing = -this.wallDir;
+        this.vx = 0;
+        this.vy = 0;
+        Audio.grab();
+        this.setAnim('grab');
+        this.updateAnim(dt);
+        this.checkHazards();
+        return;
+      }
+    }
+
     // ── Horizontal movement ──
-    const accel = this.grounded ? this.groundAccel : this.airAccel;
-    const friction = this.grounded ? this.groundFriction : this.airFriction;
+    // Apply material-based friction
+    const matFriction = this.grounded ? (Level.materials[this.groundMaterial] || Level.materials.solid).friction : 1.0;
+    const accel = (this.grounded ? this.groundAccel : this.airAccel) * matFriction;
+    const friction = (this.grounded ? this.groundFriction : this.airFriction) * (this.groundMaterial === 'ice' ? 0.15 : 1.0);
 
     if (moveDir !== 0) {
       this.vx += moveDir * accel * dt;
@@ -321,7 +407,9 @@ const Player = {
     this.checkHazards();
 
     // ── Update animation state ──
-    if (this.dashing) {
+    if (this.grabbing) {
+      this.setAnim('grab');
+    } else if (this.dashing) {
       this.setAnim('dash');
     } else if (this.grounded) {
       if (!this.wasGrounded) {
@@ -381,6 +469,7 @@ const Player = {
   resolveCollisions() {
     this.grounded = false;
     this.wallDir = 0;
+    this.groundMaterial = 'solid';
 
     const tiles = Level.getTilesNear(this.x, this.y, this.w, this.h);
 
@@ -420,6 +509,34 @@ const Player = {
         this.y += pushDir * overlapY;
 
         if (pushDir === -1) {
+          // Check material for bounce/breakable
+          const tileMat = tile.material || 'solid';
+          const matDef = Level.materials[tileMat];
+
+          // Bouncy tile: reflect velocity
+          if (matDef && matDef.bounce > 0 && this.vy > 50) {
+            this.vy = -this.vy * matDef.bounce;
+            this.squash = 1.5;
+            this.grounded = false;
+            Audio.bounce();
+            for (let i = 0; i < 6; i++) {
+              Particles.emit(
+                this.x + Math.random() * this.w, this.y + this.h,
+                (Math.random() - 0.5) * 100, -(60 + Math.random() * 80),
+                'rgba(80,200,100,0.5)', 0.2 + Math.random() * 0.15
+              );
+            }
+            continue; // Don't ground — player bounces
+          }
+
+          // Breakable tile: start crumbling on contact
+          if (matDef && matDef.breakable) {
+            Level.startBreaking(tile);
+          }
+
+          // Track ground material
+          this.groundMaterial = tileMat;
+
           // Landed
           if (this.vy > 200) {
             this.squash = 0.6;
