@@ -135,6 +135,7 @@ const Player = {
     this.vy = 0;
     this.setAnim('death');
     Camera.shake(6);
+    Engine.flash('red', 0.3);
     Audio.die();
     // Death burst particles
     Particles.burst(
@@ -433,13 +434,43 @@ const Player = {
     if (Math.abs(this.squash - this.squashTarget) < 0.01) this.squash = this.squashTarget;
     this.squashTarget = 1;
 
-    // ── Movement trail ──
-    if (Math.abs(this.vx) > 100 || Math.abs(this.vy) > 100) {
-      this.trail.push({ x: this.x + this.w / 2, y: this.y + this.h / 2, alpha: 0.3 });
+    // ── Movement trail + afterimage ──
+    if (this.dashing) {
+      // Dash afterimage (ghosting)
+      this.trail.push({ x: this.x, y: this.y, w: this.w, h: this.h, alpha: 0.5, type: 'ghost' });
+    } else if (Math.abs(this.vx) > 100 || Math.abs(this.vy) > 100) {
+      this.trail.push({ x: this.x + this.w / 2, y: this.y + this.h / 2, alpha: 0.3, type: 'dot' });
     }
     for (let i = this.trail.length - 1; i >= 0; i--) {
-      this.trail[i].alpha -= dt * 2;
+      this.trail[i].alpha -= dt * (this.trail[i].type === 'ghost' ? 4 : 2);
       if (this.trail[i].alpha <= 0) this.trail.splice(i, 1);
+    }
+
+    // ── Run dust ──
+    if (this.grounded && Math.abs(this.vx) > 150) {
+      this._dustTimer = (this._dustTimer || 0) + dt;
+      if (this._dustTimer > 0.06) {
+        this._dustTimer = 0;
+        Particles.emit(
+          this.x + (this.facing < 0 ? this.w : 0), this.y + this.h,
+          -this.facing * (20 + Math.random() * 40), -(10 + Math.random() * 30),
+          'rgba(200,190,170,0.3)', 0.15 + Math.random() * 0.1
+        );
+      }
+    }
+
+    // ── Wall-slide sparks ──
+    if (this.wallDir !== 0 && !this.grounded && this.vy > 0) {
+      this._sparkTimer = (this._sparkTimer || 0) + dt;
+      if (this._sparkTimer > 0.04) {
+        this._sparkTimer = 0;
+        const wx = this.wallDir > 0 ? this.x + this.w : this.x;
+        Particles.emit(
+          wx, this.y + Math.random() * this.h,
+          -this.wallDir * (30 + Math.random() * 50), -(20 + Math.random() * 60),
+          'rgba(255,220,120,0.5)', 0.1 + Math.random() * 0.08
+        );
+      }
     }
 
     // Reset dash on ground
@@ -663,10 +694,15 @@ const Player = {
     // Don't draw during death (particles handle the visual)
     if (this.dead) return;
 
-    // Trail
+    // Trail + afterimages
     for (const t of this.trail) {
-      ctx.fillStyle = `rgba(200, 220, 255, ${t.alpha * 0.3})`;
-      ctx.fillRect(t.x - 3, t.y - 3, 6, 6);
+      if (t.type === 'ghost') {
+        ctx.fillStyle = `rgba(180, 200, 255, ${t.alpha * 0.25})`;
+        ctx.fillRect(t.x, t.y, t.w, t.h);
+      } else {
+        ctx.fillStyle = `rgba(200, 220, 255, ${t.alpha * 0.3})`;
+        ctx.fillRect(t.x - 3, t.y - 3, 6, 6);
+      }
     }
 
     // Squash & stretch transform origin = bottom center of hitbox (feet planted)

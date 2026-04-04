@@ -10,6 +10,9 @@ const Engine = {
   lastTime: 0,
   running: false,
   hitstopTimer: 0,         // freeze frames for impact feel
+  flashAlpha: 0,           // screen flash overlay
+  flashColor: 'white',
+  flashDecay: 6,
   systems: [],             // objects with update(dt) and/or draw(ctx)
 
   init() {
@@ -67,11 +70,26 @@ const Engine = {
       if (sys.draw) sys.draw(this.ctx);
     }
 
+    // Screen flash overlay
+    if (this.flashAlpha > 0.01) {
+      this.ctx.fillStyle = this.flashColor === 'white'
+        ? `rgba(255,255,255,${this.flashAlpha})`
+        : `rgba(255,60,60,${this.flashAlpha})`;
+      this.ctx.fillRect(0, 0, this.width, this.height);
+      this.flashAlpha -= this.flashDecay * frameTime;
+      if (this.flashAlpha < 0) this.flashAlpha = 0;
+    }
+
     requestAnimationFrame(t => this.loop(t));
   },
 
   hitstop(duration) {
     this.hitstopTimer = duration;
+  },
+
+  flash(color, intensity) {
+    this.flashColor = color || 'white';
+    this.flashAlpha = intensity || 0.4;
   },
 
   register(system) {

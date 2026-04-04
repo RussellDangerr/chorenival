@@ -257,8 +257,26 @@ const Level = {
       }
     }
 
+    // Build solid grid for edge detection in rendering
+    this.gridRows = data.length;
+    this.gridCols = data[0].length;
+    this.solidGrid = [];
+    for (let row = 0; row < data.length; row++) {
+      this.solidGrid[row] = [];
+      for (let col = 0; col < data[row].length; col++) {
+        const ch = data[row][col];
+        this.solidGrid[row][col] = (ch === '1' || !!materialMap[ch]);
+      }
+    }
+
     // Load dynamic entities
     Entities.loadFromMap(map.entities);
+  },
+
+  // Check if grid cell is solid (for edge detection)
+  _isSolid(row, col) {
+    if (row < 0 || row >= this.gridRows || col < 0 || col >= this.gridCols) return false;
+    return this.solidGrid[row] && this.solidGrid[row][col];
   },
 
   getTilesNear(px, py, pw, ph) {
@@ -384,6 +402,49 @@ const Level = {
     }
     ctx.restore();
 
+    // Ambient floating particles (theme-specific)
+    const t = performance.now() / 1000;
+    ctx.save();
+    if (currentTheme === 'circus') {
+      // Confetti
+      for (let i = 0; i < 15; i++) {
+        const px = ((i * 211 + t * 12) % (Engine.width + 100)) - 50;
+        const py = ((i * 157 + Math.sin(t * 0.8 + i * 2.1) * 40 + t * 20) % (Engine.height + 60)) - 30;
+        const hue = (i * 72) % 360;
+        ctx.fillStyle = `hsla(${hue}, 70%, 65%, 0.08)`;
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(t * 1.5 + i);
+        ctx.fillRect(-3, -1, 6, 2);
+        ctx.restore();
+      }
+    } else if (currentTheme === 'harlequin') {
+      // Stage light beams
+      for (let i = 0; i < 4; i++) {
+        const bx = (Engine.width / 5) * (i + 1) + Math.sin(t * 0.3 + i * 1.5) * 60;
+        const grad2 = ctx.createLinearGradient(bx, 0, bx, Engine.height);
+        grad2.addColorStop(0, 'rgba(140,100,220,0.04)');
+        grad2.addColorStop(1, 'rgba(140,100,220,0)');
+        ctx.fillStyle = grad2;
+        ctx.beginPath();
+        ctx.moveTo(bx - 20, 0);
+        ctx.lineTo(bx - 80, Engine.height);
+        ctx.lineTo(bx + 80, Engine.height);
+        ctx.lineTo(bx + 20, 0);
+        ctx.fill();
+      }
+    } else if (currentTheme === 'puppet') {
+      // Sawdust motes
+      for (let i = 0; i < 20; i++) {
+        const px = ((i * 193 + t * 8 + Math.sin(t * 0.5 + i) * 30) % (Engine.width + 40)) - 20;
+        const py = ((i * 127 + t * 15) % (Engine.height + 40)) - 20;
+        const size = 1 + (i % 2);
+        ctx.fillStyle = `rgba(180,150,100,${0.06 + Math.sin(t + i * 0.7) * 0.02})`;
+        ctx.fillRect(px, py, size, size);
+      }
+    }
+    ctx.restore();
+
     ctx.save();
     ctx.translate(-Camera.x, -Camera.y);
 
@@ -396,15 +457,35 @@ const Level = {
         const mat = tile.material && Level.materials[tile.material];
         const colors = (mat && mat.color) ? mat.color : theme.tile;
 
-        // Main tile
-        ctx.fillStyle = colors[0];
-        ctx.fillRect(tile.x, tile.y, tile.w, tile.h);
-        // Inner highlight
+        // Grid position for edge detection
+        const col = Math.floor(tile.x / this.tileSize);
+        const row = Math.floor(tile.y / this.tileSize);
+        const noTop = this._isSolid(row - 1, col);
+        const noBot = this._isSolid(row + 1, col);
+        const noLeft = this._isSolid(row, col - 1);
+        const noRight = this._isSolid(row, col + 1);
+
+        // Main tile fill
         ctx.fillStyle = colors[1];
-        ctx.fillRect(tile.x + 1, tile.y + 1, tile.w - 2, tile.h - 2);
-        // Top edge highlight
-        ctx.fillStyle = colors[2];
-        ctx.fillRect(tile.x + 1, tile.y + 1, tile.w - 2, 2);
+        ctx.fillRect(tile.x, tile.y, tile.w, tile.h);
+
+        // Exposed edge highlights (only on sides facing air)
+        if (!noTop) {
+          ctx.fillStyle = colors[2];
+          ctx.fillRect(tile.x, tile.y, tile.w, 2);
+        }
+        if (!noBot) {
+          ctx.fillStyle = colors[0];
+          ctx.fillRect(tile.x, tile.y + tile.h - 2, tile.w, 2);
+        }
+        if (!noLeft) {
+          ctx.fillStyle = colors[2];
+          ctx.fillRect(tile.x, tile.y, 2, tile.h);
+        }
+        if (!noRight) {
+          ctx.fillStyle = colors[0];
+          ctx.fillRect(tile.x + tile.w - 2, tile.y, 2, tile.h);
+        }
 
         // Material-specific visual indicators
         if (tile.material === 'bouncy') {

@@ -228,6 +228,7 @@ const Game = {
           Player.y + Player.h > g.y && Player.y < g.y + g.h) {
         Particles.burst(g.x + g.w / 2, g.y + g.h / 2, 30, 200, 'rgba(255, 215, 100, 0.7)', 0.5);
         Camera.shake(8);
+        Engine.flash('white', 0.5);
         Audio.levelComplete();
 
         // Save progress
@@ -480,20 +481,38 @@ const Game = {
       ctx.textAlign = 'left';
     }
 
-    // Death counter (top-left)
+    // Death counter (top-left) with skull icon
     if (Player.deathCount > 0) {
       ctx.fillStyle = 'rgba(255, 80, 80, 0.7)';
       ctx.font = '14px monospace';
-      ctx.fillText('deaths: ' + Player.deathCount, 16, 24);
+      // Mini skull
+      const sx = 16, sy = 12;
+      ctx.fillRect(sx + 2, sy, 8, 8);      // head
+      ctx.fillRect(sx + 1, sy + 3, 10, 4); // jaw
+      ctx.fillStyle = 'rgba(10,10,20,0.9)';
+      ctx.fillRect(sx + 3, sy + 2, 2, 2);  // left eye
+      ctx.fillRect(sx + 7, sy + 2, 2, 2);  // right eye
+      ctx.fillRect(sx + 5, sy + 5, 2, 2);  // nose
+      ctx.fillStyle = 'rgba(255, 80, 80, 0.7)';
+      ctx.fillText(Player.deathCount, 32, 24);
     }
 
-    // Gem counter (top-right)
+    // Gem counter (top-right) with diamond icon
     if (Level.totalCollectibles > 0) {
       const gc = Level.getTheme().goalColor;
       ctx.fillStyle = `rgba(${gc[0]}, ${gc[1]}, ${gc[2]}, 0.8)`;
       ctx.font = '14px monospace';
       ctx.textAlign = 'right';
-      ctx.fillText(`gems: ${Level.collectedCount} / ${Level.totalCollectibles}`, Engine.width - 16, 24);
+      ctx.fillText(`${Level.collectedCount} / ${Level.totalCollectibles}`, Engine.width - 16, 24);
+      // Mini diamond icon
+      const dx = Engine.width - 16 - ctx.measureText(`${Level.collectedCount} / ${Level.totalCollectibles}`).width - 14;
+      ctx.beginPath();
+      ctx.moveTo(dx + 5, 12);
+      ctx.lineTo(dx + 10, 18);
+      ctx.lineTo(dx + 5, 24);
+      ctx.lineTo(dx, 18);
+      ctx.closePath();
+      ctx.fill();
       ctx.textAlign = 'left';
     }
   },
