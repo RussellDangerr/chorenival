@@ -44,6 +44,16 @@ const Level = {
       name: 'The Big Top',
       theme: 'circus',
       spawn: [3, 28],
+      entities: [
+        // One-way platforms as stepping stones in the open area
+        { type: 'oneway', x: 22 * 32, y: 27 * 32, w: 96 },
+        // Moving platform over the spike pit
+        { type: 'platform', x: 20 * 32, y: 30 * 32, w: 64, h: 10, toX: 28 * 32, toY: 30 * 32, speed: 70 },
+        // Sawblade in the wall-jump chimney
+        { type: 'sawblade', x: 78 * 32, y: 14 * 32, toX: 78 * 32, toY: 10 * 32, speed: 60, radius: 10 },
+        // Patrol enemy on the long platform section
+        { type: 'patrol', x: 40 * 32, y: 31 * 32 - 20, range: 160, speed: 55 },
+      ],
       // 100 wide x 32 tall — medium-sized circus level
       // Layout: left-to-right flow, teaches run -> jump -> wall jump -> dash
       // Then vertical climb inside the "tent", ending at the top
@@ -94,6 +104,18 @@ const Level = {
       name: 'The Stage',
       theme: 'harlequin',
       spawn: [2, 18],
+      entities: [
+        // One-way platforms for alternative routes
+        { type: 'oneway', x: 10 * 32, y: 16 * 32, w: 96 },
+        { type: 'oneway', x: 30 * 32, y: 9 * 32, w: 64 },
+        // Sawblade guarding the spike field
+        { type: 'sawblade', x: 42 * 32, y: 14 * 32, toX: 42 * 32, toY: 17 * 32, speed: 70, radius: 11 },
+        // Moving platform over the long spike row
+        { type: 'platform', x: 50 * 32, y: 14 * 32, w: 64, h: 10, toX: 60 * 32, toY: 14 * 32, speed: 80 },
+        // Patrol enemies
+        { type: 'patrol', x: 15 * 32, y: 21 * 32 - 20, range: 128, speed: 45 },
+        { type: 'patrol', x: 60 * 32, y: 16 * 32 - 20, range: 96, speed: 60 },
+      ],
       // 80 wide x 22 tall — horizontal gauntlet with vertical drops
       data: [
         '11111111111111111111111111111111111111111111111111111111111111111111111111111111',
@@ -124,6 +146,18 @@ const Level = {
       name: 'The Workshop',
       theme: 'puppet',
       spawn: [2, 22],
+      entities: [
+        // One-way platforms as stepping stones in the vertical climb
+        { type: 'oneway', x: 20 * 32, y: 20 * 32, w: 96 },
+        { type: 'oneway', x: 10 * 32, y: 16 * 32, w: 64 },
+        { type: 'oneway', x: 30 * 32, y: 12 * 32, w: 64 },
+        // Moving platform near the top
+        { type: 'platform', x: 12 * 32, y: 6 * 32, w: 64, h: 10, toX: 30 * 32, toY: 6 * 32, speed: 50 },
+        // Sawblade in the middle section
+        { type: 'sawblade', x: 28 * 32, y: 15 * 32, toX: 28 * 32, toY: 11 * 32, speed: 55, radius: 12 },
+        // Patrol enemy at the bottom
+        { type: 'patrol', x: 20 * 32, y: 24 * 32 - 20, range: 200, speed: 50 },
+      ],
       // 60 wide x 26 tall — vertical tower climb
       data: [
         '111111111111111111111111111111111111111111111111111111111111',
@@ -204,6 +238,9 @@ const Level = {
         }
       }
     }
+
+    // Load dynamic entities
+    Entities.loadFromMap(map.entities);
   },
 
   getTilesNear(px, py, pw, ph) {

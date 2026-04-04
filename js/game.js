@@ -32,6 +32,7 @@ const Game = {
     Engine.register(Input);
     Engine.register(this);
     Engine.register(Level);
+    Engine.register(Entities);
     Engine.register(Particles);
     Engine.register({
       update(dt) {

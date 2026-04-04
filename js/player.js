@@ -477,11 +477,56 @@ const Player = {
         }
       }
     }
+
+    // ── Entity collisions: moving platforms ──
+    const entitySolids = Entities.getSolidRects();
+    for (const rect of entitySolids) {
+      if (rect.oneWay) continue; // handle one-ways separately
+      const overlapX = Math.min(this.x + this.w, rect.x + rect.w) - Math.max(this.x, rect.x);
+      const overlapY = Math.min(this.y + this.h, rect.y + rect.h) - Math.max(this.y, rect.y);
+      if (overlapX <= 0 || overlapY <= 0) continue;
+
+      if (overlapY <= overlapX) {
+        const pushDir = (this.y + this.h / 2) < (rect.y + rect.h / 2) ? -1 : 1;
+        this.y += pushDir * overlapY;
+        if (pushDir === -1) {
+          this.grounded = true;
+          if (this.vy > 0) this.vy = 0;
+          // Ride the platform
+          if (rect.isMoving) {
+            this.x += rect.dx;
+            this.y += rect.dy;
+          }
+        } else {
+          this.vy = 0;
+        }
+      } else {
+        const pushDir = (this.x + this.w / 2) < (rect.x + rect.w / 2) ? -1 : 1;
+        this.x += pushDir * overlapX;
+        this.vx = 0;
+      }
+    }
+
+    // ── One-way platforms: only land on top ──
+    const oneWays = Entities.getOneWayRects();
+    for (const rect of oneWays) {
+      const overlapX = Math.min(this.x + this.w, rect.x + rect.w) - Math.max(this.x, rect.x);
+      if (overlapX <= 0) continue;
+      // Only collide if player's feet are near the top of the platform and falling
+      const footY = this.y + this.h;
+      const prevFootY = footY - this.vy * Engine.fixedDt;
+      if (this.vy >= 0 && footY >= rect.y && prevFootY <= rect.y + 6) {
+        this.y = rect.y - this.h;
+        this.grounded = true;
+        this.vy = 0;
+      }
+    }
   },
 
   checkHazards() {
     if (this.dead || this.respawning) return;
-    const hazards = Level.getHazards();
+    // Combine static tile hazards + entity hazards
+    const hazards = Level.getHazards().concat(Entities.getHazardRects());
     // Use a smaller hitbox for hazard checks (more forgiving)
     const hx = this.x + this.hazardShrink;
     const hy = this.y + this.hazardShrink;
