@@ -151,6 +151,7 @@ const Player = {
   },
 
   respawn() {
+    Level.resetBreakables();
     this.spawn(this.checkpointX, this.checkpointY);
   },
 
@@ -430,6 +431,7 @@ const Player = {
     this.updateAnim(dt);
 
     // ── Squash & stretch ──
+    if (this.grabbing) this.squashTarget = 0.8; // compressed while clinging
     this.squash += (this.squashTarget - this.squash) * 14 * dt;
     if (Math.abs(this.squash - this.squashTarget) < 0.01) this.squash = this.squashTarget;
     this.squashTarget = 1;
@@ -469,6 +471,19 @@ const Player = {
           wx, this.y + Math.random() * this.h,
           -this.wallDir * (30 + Math.random() * 50), -(20 + Math.random() * 60),
           'rgba(255,220,120,0.5)', 0.1 + Math.random() * 0.08
+        );
+      }
+    }
+
+    // ── Ice sliding crystals ──
+    if (this.grounded && this.groundMaterial === 'ice' && Math.abs(this.vx) > 50) {
+      this._iceTimer = (this._iceTimer || 0) + dt;
+      if (this._iceTimer > 0.05) {
+        this._iceTimer = 0;
+        Particles.emit(
+          this.x + Math.random() * this.w, this.y + this.h,
+          (Math.random() - 0.5) * 40, -(15 + Math.random() * 25),
+          'rgba(150,200,255,0.4)', 0.15 + Math.random() * 0.1
         );
       }
     }

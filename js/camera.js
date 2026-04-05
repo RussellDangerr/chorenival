@@ -39,5 +39,20 @@ const Camera = {
 
   shake(amount) {
     this.shakeAmount = amount;
+  },
+
+  snapTo(x, y) {
+    this.x = x;
+    this.y = y;
+    this.targetX = x;
+    this.targetY = y;
+  },
+
+  snapToPlayer() {
+    const px = Player.x + Player.w / 2;
+    const py = Player.y + Player.h / 2;
+    const tx = Math.max(0, Math.min(px + Player.facing * this.lookaheadX - Engine.width / 2, Level.levelWidth - Engine.width));
+    const ty = Math.max(0, Math.min(py - Engine.height / 2, Level.levelHeight - Engine.height));
+    this.snapTo(tx, ty);
   }
 };

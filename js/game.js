@@ -97,6 +97,7 @@ const Game = {
     Player.spawn(Level.spawnX, Level.spawnY);
     Player.deathCount = 0;
     this.levelTimer = 0;
+    Camera.snapToPlayer();
     // Store total collectibles for save data
     this.save.totalGemsPerLevel[index] = Level.totalCollectibles;
   },
@@ -258,9 +259,11 @@ const Game = {
 
     // Restart current level
     if (Input.pressed('KeyR')) {
+      Level.resetBreakables();
       Player.setCheckpoint(Level.spawnX, Level.spawnY);
       Player.spawn(Level.spawnX, Level.spawnY);
       Player.deathCount = 0;
+      this.levelTimer = 0;
     }
   },
 
@@ -469,15 +472,23 @@ const Game = {
   drawHUD(ctx) {
     ctx.textAlign = 'left';
 
-    // Level name fade-in
+    // Level name fade-in with theme accent
     if (this.levelTimer < 4) {
-      const alpha = this.levelTimer < 2 ? 0.7 : 0.7 * (1 - (this.levelTimer - 2) / 2);
-      ctx.fillStyle = `rgba(200, 190, 170, ${alpha})`;
-      ctx.font = '16px monospace';
+      const alpha = this.levelTimer < 2 ? 0.8 : 0.8 * (1 - (this.levelTimer - 2) / 2);
+      const theme = Level.getTheme();
+      const gc = theme.goalColor;
+      // Themed accent underline
+      const nameW = Level.maps[this.currentLevel].name.length * 10;
+      ctx.fillStyle = `rgba(${gc[0]},${gc[1]},${gc[2]},${alpha * 0.3})`;
+      ctx.fillRect(Engine.width / 2 - nameW / 2 - 10, 36, nameW + 20, 2);
+      // Level name
+      ctx.fillStyle = `rgba(${gc[0]},${gc[1]},${gc[2]},${alpha})`;
+      ctx.font = 'bold 18px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(Level.maps[this.currentLevel].name, Engine.width / 2, 30);
+      ctx.fillText(Level.maps[this.currentLevel].name, Engine.width / 2, 32);
+      ctx.fillStyle = `rgba(200, 190, 170, ${alpha * 0.5})`;
       ctx.font = '12px monospace';
-      ctx.fillText(`${this.currentLevel + 1} / ${this.totalLevels}`, Engine.width / 2, 48);
+      ctx.fillText(`${this.currentLevel + 1} / ${this.totalLevels}`, Engine.width / 2, 52);
       ctx.textAlign = 'left';
     }
 
@@ -496,6 +507,16 @@ const Game = {
       ctx.fillStyle = 'rgba(255, 80, 80, 0.7)';
       ctx.fillText(Player.deathCount, 32, 24);
     }
+
+    // Timer (top-center)
+    const mins = Math.floor(this.levelTimer / 60);
+    const secs = Math.floor(this.levelTimer % 60);
+    const ms = Math.floor((this.levelTimer % 1) * 100);
+    ctx.fillStyle = 'rgba(200,190,170,0.4)';
+    ctx.font = '13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${mins}:${secs < 10 ? '0' : ''}${secs}.${ms < 10 ? '0' : ''}${ms}`, Engine.width / 2, Engine.height - 12);
+    ctx.textAlign = 'left';
 
     // Gem counter (top-right) with diamond icon
     if (Level.totalCollectibles > 0) {
@@ -527,11 +548,15 @@ const Game = {
 
     ctx.fillStyle = `rgba(200, 180, 150, ${alpha * 0.5})`;
     ctx.font = '14px monospace';
+    const lmins = Math.floor(this.levelTimer / 60);
+    const lsecs = Math.floor(this.levelTimer % 60);
+    const lms = Math.floor((this.levelTimer % 1) * 100);
+    ctx.fillText(`time: ${lmins}:${lsecs < 10 ? '0' : ''}${lsecs}.${lms < 10 ? '0' : ''}${lms}`, Engine.width / 2, Engine.height / 2 + 12);
     if (Player.deathCount > 0) {
-      ctx.fillText(`deaths: ${Player.deathCount}`, Engine.width / 2, Engine.height / 2 + 12);
+      ctx.fillText(`deaths: ${Player.deathCount}`, Engine.width / 2, Engine.height / 2 + 32);
     }
     if (Level.totalCollectibles > 0) {
-      ctx.fillText(`gems: ${Level.collectedCount} / ${Level.totalCollectibles}`, Engine.width / 2, Engine.height / 2 + 32);
+      ctx.fillText(`gems: ${Level.collectedCount} / ${Level.totalCollectibles}`, Engine.width / 2, Engine.height / 2 + 52);
     }
   },
 

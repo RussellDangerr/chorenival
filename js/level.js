@@ -307,6 +307,17 @@ const Level = {
     tile.breakTimer = this.materials.breakable.breakTime;
   },
 
+  // Reset all breakable tiles (called on respawn)
+  resetBreakables() {
+    for (const tile of this.tiles) {
+      if (tile.material === 'breakable') {
+        tile.breaking = false;
+        tile.breakTimer = 0;
+        tile.broken = false;
+      }
+    }
+  },
+
   // Get material for a tile at a position (for physics lookups)
   getMaterialAt(x, y) {
     for (const tile of this.tiles) {
@@ -437,8 +448,16 @@ const Level = {
     ctx.save();
     ctx.translate(-Camera.x, -Camera.y);
 
-    // Draw tiles
+    // Draw tiles (viewport culled)
+    const viewL = Camera.x - 32;
+    const viewR = Camera.x + Engine.width + 32;
+    const viewT = Camera.y - 32;
+    const viewB = Camera.y + Engine.height + 32;
+
     for (const tile of this.tiles) {
+      // Skip tiles outside viewport
+      if (tile.x + tile.w < viewL || tile.x > viewR || tile.y + tile.h < viewT || tile.y > viewB) continue;
+
       if (tile.type === 'solid') {
         // Skip broken breakable tiles
         if (tile.broken) continue;
@@ -574,10 +593,11 @@ const Level = {
       }
     }
 
-    // Draw collectibles (gems)
+    // Draw collectibles (gems) — viewport culled
     const gc = theme.goalColor;
     for (const col of this.collectibles) {
       if (col.collected) continue;
+      if (col.x + col.w < viewL || col.x > viewR || col.y + col.h < viewT || col.y > viewB) continue;
       const t = performance.now() / 1000;
       const bob = Math.sin(t * 3 + col.x * 0.1) * 3; // gentle bob
       const pulse = 0.6 + 0.3 * Math.sin(t * 4 + col.x * 0.2);
