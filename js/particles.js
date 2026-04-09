@@ -5,7 +5,8 @@ const Particles = {
 
   emit(x, y, vx, vy, color, life) {
     if (this.pool.length >= this.maxParticles) {
-      this.pool.shift();
+      this.pool[0] = this.pool[this.pool.length - 1];
+      this.pool.pop();
     }
     this.pool.push({
       x, y, vx, vy, color,
@@ -30,7 +31,8 @@ const Particles = {
       p.vy += 200 * dt;  // gravity on particles
       p.life -= dt;
       if (p.life <= 0) {
-        this.pool.splice(i, 1);
+        this.pool[i] = this.pool[this.pool.length - 1];
+        this.pool.pop();
       }
     }
   },

@@ -11,10 +11,15 @@ const Audio = {
       if (!this.ctx) {
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       }
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      } else if (this.ctx.state === 'running') {
+        window.removeEventListener('keydown', resume);
+        window.removeEventListener('click', resume);
+      }
     };
-    window.addEventListener('keydown', resume, { once: false });
-    window.addEventListener('click', resume, { once: false });
+    window.addEventListener('keydown', resume);
+    window.addEventListener('click', resume);
   },
 
   // Play a procedurally generated tone
@@ -90,7 +95,6 @@ const Audio = {
   },
 
   levelComplete() {
-    const t = this.ctx ? this.ctx.currentTime : 0;
     this._tone(523, 0.15, 'triangle', 0.2);
     setTimeout(() => this._tone(659, 0.15, 'triangle', 0.2), 100);
     setTimeout(() => this._tone(784, 0.15, 'triangle', 0.2), 200);

@@ -246,6 +246,20 @@ const Level = {
       }
     }
 
+    // Cache hazard and goal rects (avoid per-frame allocation)
+    this._cachedHazards = this.tiles
+      .filter(t => t.type === 'spike')
+      .map(t => ({ x: t.hx, y: t.hy, w: t.hw, h: t.hh }));
+    this._cachedGoals = this.tiles.filter(t => t.type === 'goal');
+
+    // Build spatial grid for fast tile lookups (getTilesNear)
+    this._tileGrid = {};
+    for (const tile of this.tiles) {
+      if (tile.type !== 'solid') continue;
+      const key = Math.floor(tile.x / this.tileSize) + ',' + Math.floor(tile.y / this.tileSize);
+      this._tileGrid[key] = tile;
+    }
+
     // Build solid grid for edge detection in rendering
     this.gridRows = data.length;
     this.gridCols = data[0].length;
@@ -269,15 +283,18 @@ const Level = {
   },
 
   getTilesNear(px, py, pw, ph) {
-    // Return only tiles that could possibly overlap the given rect (broad phase)
-    const margin = this.tileSize;
+    // Spatial grid lookup — O(1) per cell instead of O(n) scan
+    const s = this.tileSize;
+    const x1 = Math.floor((px - s) / s);
+    const x2 = Math.floor((px + pw + s) / s);
+    const y1 = Math.floor((py - s) / s);
+    const y2 = Math.floor((py + ph + s) / s);
     const result = [];
-    for (const tile of this.tiles) {
-      if (tile.type !== 'solid') continue;
-      if (tile.broken) continue; // skip destroyed breakable tiles
-      if (tile.x + tile.w + margin < px || tile.x - margin > px + pw) continue;
-      if (tile.y + tile.h + margin < py || tile.y - margin > py + ph) continue;
-      result.push(tile);
+    for (let gy = y1; gy <= y2; gy++) {
+      for (let gx = x1; gx <= x2; gx++) {
+        const tile = this._tileGrid[gx + ',' + gy];
+        if (tile && !tile.broken) result.push(tile);
+      }
     }
     return result;
   },
@@ -318,26 +335,20 @@ const Level = {
     }
   },
 
-  // Get material for a tile at a position (for physics lookups)
+  // Get material for a tile at a position (O(1) grid lookup)
   getMaterialAt(x, y) {
-    for (const tile of this.tiles) {
-      if (tile.type !== 'solid' || tile.broken) continue;
-      if (x >= tile.x && x < tile.x + tile.w && y >= tile.y && y < tile.y + tile.h) {
-        return tile.material || 'solid';
-      }
-    }
+    const key = Math.floor(x / this.tileSize) + ',' + Math.floor(y / this.tileSize);
+    const tile = this._tileGrid[key];
+    if (tile && !tile.broken) return tile.material || 'solid';
     return null;
   },
 
   getGoals() {
-    return this.tiles.filter(t => t.type === 'goal');
+    return this._cachedGoals;
   },
 
   getHazards() {
-    // Return hazard rects (using the tighter spike hitbox)
-    return this.tiles
-      .filter(t => t.type === 'spike')
-      .map(t => ({ x: t.hx, y: t.hy, w: t.hw, h: t.hh }));
+    return this._cachedHazards;
   },
 
   getTheme() {

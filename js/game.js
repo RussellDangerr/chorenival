@@ -61,7 +61,11 @@ const Game = {
       const raw = localStorage.getItem('clowncity_save');
       if (raw) {
         const data = JSON.parse(raw);
-        this.save = { ...this.save, ...data };
+        // Only merge valid arrays
+        if (Array.isArray(data.levelsComplete)) this.save.levelsComplete = data.levelsComplete;
+        if (Array.isArray(data.bestDeaths)) this.save.bestDeaths = data.bestDeaths;
+        if (Array.isArray(data.gemsCollected)) this.save.gemsCollected = data.gemsCollected;
+        if (Array.isArray(data.totalGemsPerLevel)) this.save.totalGemsPerLevel = data.totalGemsPerLevel;
       }
     } catch (e) { /* ignore corrupt saves */ }
     // Ensure arrays are properly sized
@@ -269,7 +273,7 @@ const Game = {
 
   // ── LEVEL COMPLETE ──
   updateLevelComplete(dt) {
-    if (this.timer > 1.5) {
+    if (this.timer > 1.0 && (Input.pressed('Space') || Input.pressed('Enter') || Input.pressed('KeyZ'))) {
       const nextLevel = this.currentLevel + 1;
       if (nextLevel >= this.totalLevels) {
         this.fadeToBlack(() => {
@@ -557,6 +561,13 @@ const Game = {
     }
     if (Level.totalCollectibles > 0) {
       ctx.fillText(`gems: ${Level.collectedCount} / ${Level.totalCollectibles}`, Engine.width / 2, Engine.height / 2 + 52);
+    }
+
+    // Continue prompt (after brief delay)
+    if (this.timer > 1.0 && Math.sin(this.timer * 3) > -0.3) {
+      ctx.fillStyle = `rgba(255, 215, 100, ${alpha * 0.6})`;
+      ctx.font = '15px monospace';
+      ctx.fillText('PRESS SPACE', Engine.width / 2, Engine.height / 2 + 85);
     }
   },
 

@@ -106,6 +106,11 @@ const Player = {
   // ── Material state ──
   groundMaterial: 'solid',   // material of tile player is standing on
 
+  // ── Particle timers ──
+  _dustTimer: 0,
+  _sparkTimer: 0,
+  _iceTimer: 0,
+
   spawn(x, y) {
     this.x = x;
     this.y = y;
@@ -353,11 +358,7 @@ const Player = {
     if (this.grounded) {
       this.coyoteTimer = this.coyoteTime;
     } else {
-      if (this.wasGrounded && this.vy >= 0) {
-        // Just walked off a ledge — coyote time is valid
-      } else if (!this.wasGrounded) {
-        this.coyoteTimer -= dt;
-      }
+      this.coyoteTimer -= dt;
     }
 
     // ── Jump ──
@@ -394,8 +395,9 @@ const Player = {
     if (this.jumpHeld && !jumpHeldNow && this.vy < 0) {
       this.vy *= this.jumpCutMultiplier;
       this.jumpHeld = false;
+    } else if (jumpHeldNow && this.vy < 0) {
+      this.jumpHeld = true;
     }
-    if (jumpHeldNow) this.jumpHeld = true;
 
     // ── Apply velocity ──
     this.wasGrounded = this.grounded;
