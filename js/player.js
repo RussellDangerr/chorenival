@@ -546,12 +546,14 @@ const Player = {
       if (overlapY <= overlapX) {
         const pushDir = (this.y + this.h / 2) < (tile.y + tile.h / 2) ? -1 : 1;
 
-        // ── Corner correction ──
-        // If horizontal overlap is small, nudge the player sideways instead of blocking
-        if (overlapX <= this.cornerCorrectionMax && overlapX > 0) {
+        // Ceiling corner correction: on a ceiling bonk with small horizontal
+        // overlap, slide past the corner instead of hard-stopping. Must be
+        // gated to pushDir === 1 — running it on ground collisions nudges the
+        // player horizontally every frame while walking along flat ground.
+        if (pushDir === 1 && overlapX <= this.cornerCorrectionMax && overlapX > 0) {
           const nudgeDir = (this.x + this.w / 2) < (tile.x + tile.w / 2) ? -1 : 1;
           this.x += nudgeDir * overlapX;
-          continue; // Skip vertical resolution — we nudged past the corner
+          continue;
         }
 
         this.y += pushDir * overlapY;
