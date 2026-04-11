@@ -357,6 +357,8 @@ const Level = {
   },
 
   draw(ctx) {
+    // Skip drawing until a level is loaded (title/levelSelect screens)
+    if (!this.collectibles) return;
     const theme = this.getTheme();
 
     // Background gradient atmosphere
