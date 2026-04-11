@@ -28,8 +28,9 @@ const Game = {
     this.totalLevels = Level.maps.length;
     this.loadSave();
 
-    // Register systems in update/draw order
-    Engine.register(Input);
+    // Register systems in update/draw order.
+    // Input must run LAST so it clears single-frame flags (justPressed)
+    // only after every consumer has had a chance to read them this frame.
     Engine.register(this);
     Engine.register(Level);
     Engine.register(Entities);
@@ -51,6 +52,7 @@ const Game = {
     });
     Engine.register(Camera);
     Engine.register({ draw(ctx) { Game.drawOverlay(ctx); } });
+    Engine.register(Input);
 
     Engine.start();
   },
