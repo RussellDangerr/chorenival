@@ -17,6 +17,10 @@ in a browser to run; deployed live at clowncity.russelldangerr.com (main → Clo
 - `js/player.js` — Bozo. Unicycle **momentum state machine** (`ramp`→`cruise`→`brake`),
   `approach()` helper, brake-kick + stomp combat in `checkHazards()`/`getAttackRect()`.
   `facing` is frozen (always faces one way); `travelDir` is the real direction.
+  `resolveCollisions()` X-pass uses a **`stepTolerance` guard** (`overlapY > 8`) so flat
+  floor seams aren't misread as walls — that was snagging momentum. The player draws as
+  a **procedural unicycle** in `_drawRectFallback()` (spinning wheel + frame + body),
+  with a velocity-driven `lean`/`wheelAngle` sway; purely visual, hitbox unchanged.
 - `js/input.js` — keyboard + **touch (swipe = steer via sticky `runDir`, tap = jump)**,
   `jumpBuffered()/consumeJump()`, plus `tapped()/swipeEdge()` for menu nav.
 - `js/level.js` — tile maps (3 lean tracks), materials (`solid`, `treadmill`),
@@ -37,6 +41,8 @@ in a browser to run; deployed live at clowncity.russelldangerr.com (main → Clo
 ## Tuning knobs (all in `player.js` constants)
 `runSpeed` (300), `startRampTime` (1.5), `reverseDecel`/`reverseAccel`,
 `pauseAtZeroTime`, `treadmillCap` (150), `brakeWindow` (0.18), `jumpForce` (-480).
+Collision/feel: `stepTolerance` (8, the flat-ground snag guard). Unicycle sway:
+`cruiseLean` (0.10), `brakeLean` (0.14), `leanRate` (10), `wheelRadius` (8).
 
 ## Verifying changes
 No tests. Run `index.html` (e.g. `py -m http.server 8080 --directory .`) and play,
@@ -44,5 +50,6 @@ or drive the sim headlessly by stepping `Engine.systems[*].update(Engine.fixedDt
 and reading `Player`/`Entities` state.
 
 ## Out of scope / follow-ups
-- Sprites/art (still rect-fallback). On-screen touch **pause** button. Level 2/3
-  feel tuning. The lone non-bold `20px` LOCKED font label (flagged in the audit).
+- Real sprite art (the player is a procedural unicycle now; no spritesheet). On-screen
+  touch **pause** button. Level 2/3 feel tuning. The lone non-bold `20px` LOCKED font
+  label (flagged in the audit).
