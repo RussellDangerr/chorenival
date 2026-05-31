@@ -2,26 +2,34 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Clown City</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
+    html, body {
       background: #0a0a12;
       display: flex;
       justify-content: center;
       align-items: center;
       height: 100vh;
       overflow: hidden;
+      /* Touch game: stop the browser from stealing swipes for scroll / back-gesture / zoom */
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior: none;
     }
     canvas {
       display: block;
       image-rendering: pixelated;
+      touch-action: none;
     }
   </style>
 </head>
 <body>
   <canvas id="game"></canvas>
+  <script src="js/tokens.js"></script>
   <script src="js/engine.js"></script>
   <script src="js/input.js"></script>
   <script src="js/player.js"></script>

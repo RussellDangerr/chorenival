@@ -136,7 +136,7 @@ const Game = {
 
   // ── TITLE ──
   updateTitle(dt) {
-    if (Input.pressed('Space') || Input.pressed('Enter') || Input.pressed('KeyZ')) {
+    if (Input.pressed('Space') || Input.pressed('Enter') || Input.pressed('KeyZ') || Input.tapped()) {
       Audio.uiSelect();
       this.fadeToBlack(() => {
         this.state = 'levelSelect';
@@ -152,20 +152,20 @@ const Game = {
   _selectedLevel: 0,
 
   updateLevelSelect(dt) {
-    // Navigate
-    if (Input.pressed('ArrowRight') || Input.pressed('KeyD')) {
+    // Navigate (arrows/keys or a horizontal swipe)
+    if (Input.pressed('ArrowRight') || Input.pressed('KeyD') || Input.swipeEdge() > 0) {
       this._selectedLevel = Math.min(this._selectedLevel + 1, this.totalLevels - 1);
       Audio.uiSelect();
     }
-    if (Input.pressed('ArrowLeft') || Input.pressed('KeyA')) {
+    if (Input.pressed('ArrowLeft') || Input.pressed('KeyA') || Input.swipeEdge() < 0) {
       this._selectedLevel = Math.max(this._selectedLevel - 1, 0);
       Audio.uiSelect();
     }
     // Check if level is accessible (previous level complete, or it's level 0)
     const accessible = this._selectedLevel === 0 || this.save.levelsComplete[this._selectedLevel - 1];
 
-    // Select
-    if ((Input.pressed('Space') || Input.pressed('Enter') || Input.pressed('KeyZ')) && accessible) {
+    // Select (confirm key or a tap)
+    if ((Input.pressed('Space') || Input.pressed('Enter') || Input.pressed('KeyZ') || Input.tapped()) && accessible) {
       Audio.uiSelect();
       this.fadeToBlack(() => {
         this.state = 'playing';
@@ -189,9 +189,6 @@ const Game = {
   updatePlaying(dt) {
     this.levelTimer += dt;
 
-    // Update breakable tiles
-    Level.updateBreakables(dt);
-
     if (Input.pressed('Escape') || Input.pressed('KeyP')) {
       this.state = 'paused';
       return;
@@ -208,7 +205,7 @@ const Game = {
         for (const other of Level.checkpoints) other.active = false;
         cp.active = true;
         Player.setCheckpoint(cp.x, cp.y);
-        Particles.burst(cp.x + cp.w / 2, cp.y + cp.h / 2, 12, 100, 'rgba(255, 215, 50, 0.7)', 0.3);
+        Particles.burst(cp.x + cp.w / 2, cp.y + cp.h / 2, 12, 100, Tokens.rgba(Tokens.color.goldFlag, 0.7), 0.3);
         Audio.checkpoint();
       }
     }
@@ -233,7 +230,7 @@ const Game = {
     for (const g of goals) {
       if (Player.x + Player.w > g.x && Player.x < g.x + g.w &&
           Player.y + Player.h > g.y && Player.y < g.y + g.h) {
-        Particles.burst(g.x + g.w / 2, g.y + g.h / 2, 30, 200, 'rgba(255, 215, 100, 0.7)', 0.5);
+        Particles.burst(g.x + g.w / 2, g.y + g.h / 2, 30, 200, Tokens.rgba(Tokens.color.gold, 0.7), 0.5);
         Camera.shake(8);
         Engine.flash('white', 0.5);
         Audio.levelComplete();
@@ -265,7 +262,6 @@ const Game = {
 
     // Restart current level
     if (Input.pressed('KeyR')) {
-      Level.resetBreakables();
       Player.setCheckpoint(Level.spawnX, Level.spawnY);
       Player.spawn(Level.spawnX, Level.spawnY);
       Player.deathCount = 0;
@@ -275,7 +271,7 @@ const Game = {
 
   // ── LEVEL COMPLETE ──
   updateLevelComplete(dt) {
-    if (this.timer > 1.0 && (Input.pressed('Space') || Input.pressed('Enter') || Input.pressed('KeyZ'))) {
+    if (this.timer > 1.0 && (Input.pressed('Space') || Input.pressed('Enter') || Input.pressed('KeyZ') || Input.tapped())) {
       const nextLevel = this.currentLevel + 1;
       if (nextLevel >= this.totalLevels) {
         this.fadeToBlack(() => {
@@ -314,7 +310,7 @@ const Game = {
 
   // ── WIN ──
   updateWin(dt) {
-    if (Input.pressed('Space') || Input.pressed('Enter') || Input.pressed('KeyZ')) {
+    if (Input.pressed('Space') || Input.pressed('Enter') || Input.pressed('KeyZ') || Input.tapped()) {
       Audio.uiSelect();
       this.fadeToBlack(() => {
         this.state = 'title';
@@ -336,23 +332,23 @@ const Game = {
 
     // Mute indicator
     if (Audio.muted) {
-      ctx.fillStyle = 'rgba(255,255,255,0.3)';
-      ctx.font = '12px monospace';
+      ctx.fillStyle = Tokens.rgba(Tokens.color.white, 0.3);
+      ctx.font = Tokens.font.xs;
       ctx.textAlign = 'right';
       ctx.fillText('[MUTED - M to toggle]', Engine.width - 12, 18);
     }
 
     // Transition overlay
     if (this.transitionAlpha > 0) {
-      ctx.fillStyle = `rgba(0, 0, 0, ${this.transitionAlpha})`;
+      ctx.fillStyle = Tokens.rgba(Tokens.color.overlay, this.transitionAlpha);
       ctx.fillRect(0, 0, Engine.width, Engine.height);
     }
   },
 
   drawTitle(ctx) {
     const grad = ctx.createLinearGradient(0, 0, 0, Engine.height);
-    grad.addColorStop(0, '#0a0a12');
-    grad.addColorStop(1, '#1a0a20');
+    grad.addColorStop(0, Tokens.color.bgDeep);
+    grad.addColorStop(1, Tokens.color.bgCircus);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, Engine.width, Engine.height);
 
@@ -365,35 +361,35 @@ const Game = {
     }
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#e8e0d0';
-    ctx.font = 'bold 52px monospace';
+    ctx.fillStyle = Tokens.color.ink;
+    ctx.font = Tokens.font.title;
     ctx.fillText('CLOWN CITY', Engine.width / 2, Engine.height / 2 - 60);
 
-    ctx.fillStyle = 'rgba(200, 180, 150, 0.6)';
-    ctx.font = '16px monospace';
-    ctx.fillText('a momentum platformer', Engine.width / 2, Engine.height / 2 - 20);
+    ctx.fillStyle = Tokens.rgba(Tokens.color.inkWarm, 0.6);
+    ctx.font = Tokens.font.md;
+    ctx.fillText('a unicycle auto-runner', Engine.width / 2, Engine.height / 2 - 20);
 
     if (Math.sin(t * 3) > -0.3) {
-      ctx.fillStyle = 'rgba(255, 215, 100, 0.8)';
-      ctx.font = '18px monospace';
-      ctx.fillText('PRESS SPACE', Engine.width / 2, Engine.height / 2 + 50);
+      ctx.fillStyle = Tokens.rgba(Tokens.color.gold, 0.8);
+      ctx.font = Tokens.font.lg;
+      ctx.fillText('TAP  /  SPACE', Engine.width / 2, Engine.height / 2 + 50);
     }
 
-    ctx.fillStyle = 'rgba(150, 140, 130, 0.4)';
-    ctx.font = '12px monospace';
-    ctx.fillText('ARROWS/WASD = move   SPACE = jump   SHIFT = dash   E = grab   M = mute', Engine.width / 2, Engine.height - 40);
+    ctx.fillStyle = Tokens.rgba(Tokens.color.inkDim, 0.4);
+    ctx.font = Tokens.font.xs;
+    ctx.fillText('SWIPE = steer    TAP = jump    (keyboard: ← → / SPACE)', Engine.width / 2, Engine.height - 40);
   },
 
   drawLevelSelect(ctx) {
     const grad = ctx.createLinearGradient(0, 0, 0, Engine.height);
-    grad.addColorStop(0, '#0a0a12');
-    grad.addColorStop(1, '#120a18');
+    grad.addColorStop(0, Tokens.color.bgDeep);
+    grad.addColorStop(1, Tokens.color.bgSelect);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, Engine.width, Engine.height);
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#e8e0d0';
-    ctx.font = 'bold 28px monospace';
+    ctx.fillStyle = Tokens.color.ink;
+    ctx.font = Tokens.font.heading;
     ctx.fillText('SELECT LEVEL', Engine.width / 2, 80);
 
     const cardW = 180;
@@ -422,7 +418,7 @@ const Game = {
 
       // Selection border
       if (selected && accessible) {
-        ctx.strokeStyle = 'rgba(255, 215, 100, 0.7)';
+        ctx.strokeStyle = Tokens.rgba(Tokens.color.gold, 0.7);
         ctx.lineWidth = 2;
         ctx.strokeRect(x, cardY, cardW, cardH);
       }
@@ -432,28 +428,28 @@ const Game = {
       ctx.fillRect(x, cardY, cardW, 4);
 
       // Level number
-      ctx.fillStyle = accessible ? '#e8e0d0' : 'rgba(100, 100, 100, 0.5)';
-      ctx.font = 'bold 20px monospace';
+      ctx.fillStyle = accessible ? Tokens.color.ink : Tokens.rgba(Tokens.color.disabled, 0.5);
+      ctx.font = Tokens.font.cardNum;
       ctx.fillText(`${i + 1}`, x + cardW / 2, cardY + 32);
 
       // Level name
-      ctx.font = '13px monospace';
-      ctx.fillStyle = accessible ? 'rgba(200, 190, 170, 0.8)' : 'rgba(100, 100, 100, 0.4)';
+      ctx.font = Tokens.font.sm;
+      ctx.fillStyle = accessible ? Tokens.rgba(Tokens.color.dust, 0.8) : Tokens.rgba(Tokens.color.disabled, 0.4);
       ctx.fillText(Level.maps[i].name, x + cardW / 2, cardY + 55);
 
       if (!accessible) {
         // Locked
-        ctx.fillStyle = 'rgba(100, 100, 100, 0.4)';
+        ctx.fillStyle = Tokens.rgba(Tokens.color.disabled, 0.4);
         ctx.font = '20px monospace';
         ctx.fillText('LOCKED', x + cardW / 2, cardY + 90);
       } else if (complete) {
         // Stats
-        ctx.fillStyle = 'rgba(100, 255, 150, 0.6)';
-        ctx.font = '12px monospace';
+        ctx.fillStyle = Tokens.rgba(Tokens.color.success, 0.6);
+        ctx.font = Tokens.font.xs;
         ctx.fillText('COMPLETE', x + cardW / 2, cardY + 80);
         const bd = this.save.bestDeaths[i];
         if (bd >= 0) {
-          ctx.fillStyle = 'rgba(200, 190, 170, 0.5)';
+          ctx.fillStyle = Tokens.rgba(Tokens.color.dust, 0.5);
           ctx.fillText(`best: ${bd} deaths`, x + cardW / 2, cardY + 98);
         }
         const gc = this.save.gemsCollected[i];
@@ -463,16 +459,16 @@ const Game = {
         }
       } else {
         // Not yet played
-        ctx.fillStyle = 'rgba(200, 190, 170, 0.3)';
-        ctx.font = '12px monospace';
+        ctx.fillStyle = Tokens.rgba(Tokens.color.dust, 0.3);
+        ctx.font = Tokens.font.xs;
         ctx.fillText('—', x + cardW / 2, cardY + 90);
       }
     }
 
     // Instructions
-    ctx.fillStyle = 'rgba(150, 140, 130, 0.5)';
-    ctx.font = '13px monospace';
-    ctx.fillText('LEFT / RIGHT to select    SPACE to play    ESC to go back', Engine.width / 2, Engine.height - 40);
+    ctx.fillStyle = Tokens.rgba(Tokens.color.inkDim, 0.5);
+    ctx.font = Tokens.font.sm;
+    ctx.fillText('SWIPE / ← → to select    TAP / SPACE to play    ESC to go back', Engine.width / 2, Engine.height - 40);
   },
 
   drawHUD(ctx) {
@@ -489,19 +485,19 @@ const Game = {
       ctx.fillRect(Engine.width / 2 - nameW / 2 - 10, 36, nameW + 20, 2);
       // Level name
       ctx.fillStyle = `rgba(${gc[0]},${gc[1]},${gc[2]},${alpha})`;
-      ctx.font = 'bold 18px monospace';
+      ctx.font = Tokens.font.hud;
       ctx.textAlign = 'center';
       ctx.fillText(Level.maps[this.currentLevel].name, Engine.width / 2, 32);
-      ctx.fillStyle = `rgba(200, 190, 170, ${alpha * 0.5})`;
-      ctx.font = '12px monospace';
+      ctx.fillStyle = Tokens.rgba(Tokens.color.dust, alpha * 0.5);
+      ctx.font = Tokens.font.xs;
       ctx.fillText(`${this.currentLevel + 1} / ${this.totalLevels}`, Engine.width / 2, 52);
       ctx.textAlign = 'left';
     }
 
     // Death counter (top-left) with skull icon
     if (Player.deathCount > 0) {
-      ctx.fillStyle = 'rgba(255, 80, 80, 0.7)';
-      ctx.font = '14px monospace';
+      ctx.fillStyle = Tokens.rgba(Tokens.color.danger, 0.7);
+      ctx.font = Tokens.font.body;
       // Mini skull
       const sx = 16, sy = 12;
       ctx.fillRect(sx + 2, sy, 8, 8);      // head
@@ -510,7 +506,7 @@ const Game = {
       ctx.fillRect(sx + 3, sy + 2, 2, 2);  // left eye
       ctx.fillRect(sx + 7, sy + 2, 2, 2);  // right eye
       ctx.fillRect(sx + 5, sy + 5, 2, 2);  // nose
-      ctx.fillStyle = 'rgba(255, 80, 80, 0.7)';
+      ctx.fillStyle = Tokens.rgba(Tokens.color.danger, 0.7);
       ctx.fillText(Player.deathCount, 32, 24);
     }
 
@@ -518,8 +514,8 @@ const Game = {
     const mins = Math.floor(this.levelTimer / 60);
     const secs = Math.floor(this.levelTimer % 60);
     const ms = Math.floor((this.levelTimer % 1) * 100);
-    ctx.fillStyle = 'rgba(200,190,170,0.4)';
-    ctx.font = '13px monospace';
+    ctx.fillStyle = Tokens.rgba(Tokens.color.dust, 0.4);
+    ctx.font = Tokens.font.sm;
     ctx.textAlign = 'center';
     ctx.fillText(`${mins}:${secs < 10 ? '0' : ''}${secs}.${ms < 10 ? '0' : ''}${ms}`, Engine.width / 2, Engine.height - 12);
     ctx.textAlign = 'left';
@@ -528,7 +524,7 @@ const Game = {
     if (Level.totalCollectibles > 0) {
       const gc = Level.getTheme().goalColor;
       ctx.fillStyle = `rgba(${gc[0]}, ${gc[1]}, ${gc[2]}, 0.8)`;
-      ctx.font = '14px monospace';
+      ctx.font = Tokens.font.body;
       ctx.textAlign = 'right';
       ctx.fillText(`${Level.collectedCount} / ${Level.totalCollectibles}`, Engine.width - 16, 24);
       // Mini diamond icon
@@ -548,12 +544,12 @@ const Game = {
     ctx.textAlign = 'center';
     const alpha = Math.min(1, this.timer * 2);
 
-    ctx.fillStyle = `rgba(255, 215, 100, ${alpha * 0.9})`;
-    ctx.font = 'bold 28px monospace';
+    ctx.fillStyle = Tokens.rgba(Tokens.color.gold, alpha * 0.9);
+    ctx.font = Tokens.font.heading;
     ctx.fillText('LEVEL COMPLETE', Engine.width / 2, Engine.height / 2 - 20);
 
-    ctx.fillStyle = `rgba(200, 180, 150, ${alpha * 0.5})`;
-    ctx.font = '14px monospace';
+    ctx.fillStyle = Tokens.rgba(Tokens.color.inkWarm, alpha * 0.5);
+    ctx.font = Tokens.font.body;
     const lmins = Math.floor(this.levelTimer / 60);
     const lsecs = Math.floor(this.levelTimer % 60);
     const lms = Math.floor((this.levelTimer % 1) * 100);
@@ -567,23 +563,23 @@ const Game = {
 
     // Continue prompt (after brief delay)
     if (this.timer > 1.0 && Math.sin(this.timer * 3) > -0.3) {
-      ctx.fillStyle = `rgba(255, 215, 100, ${alpha * 0.6})`;
-      ctx.font = '15px monospace';
-      ctx.fillText('PRESS SPACE', Engine.width / 2, Engine.height / 2 + 85);
+      ctx.fillStyle = Tokens.rgba(Tokens.color.gold, alpha * 0.6);
+      ctx.font = Tokens.font.prompt;
+      ctx.fillText('TAP  /  SPACE', Engine.width / 2, Engine.height / 2 + 85);
     }
   },
 
   drawPause(ctx) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillStyle = Tokens.rgba(Tokens.color.overlay, 0.6);
     ctx.fillRect(0, 0, Engine.width, Engine.height);
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#e8e0d0';
-    ctx.font = 'bold 28px monospace';
+    ctx.fillStyle = Tokens.color.ink;
+    ctx.font = Tokens.font.heading;
     ctx.fillText('PAUSED', Engine.width / 2, Engine.height / 2 - 50);
 
-    ctx.fillStyle = 'rgba(200, 190, 170, 0.7)';
-    ctx.font = '14px monospace';
+    ctx.fillStyle = Tokens.rgba(Tokens.color.dust, 0.7);
+    ctx.font = Tokens.font.body;
     ctx.fillText('ESC / P  —  resume', Engine.width / 2, Engine.height / 2);
     ctx.fillText('R  —  restart level', Engine.width / 2, Engine.height / 2 + 25);
     ctx.fillText('Q  —  quit to level select', Engine.width / 2, Engine.height / 2 + 50);
@@ -592,8 +588,8 @@ const Game = {
 
   drawWin(ctx) {
     const grad = ctx.createLinearGradient(0, 0, 0, Engine.height);
-    grad.addColorStop(0, '#0a0a12');
-    grad.addColorStop(1, '#14100a');
+    grad.addColorStop(0, Tokens.color.bgDeep);
+    grad.addColorStop(1, Tokens.color.bgWin);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, Engine.width, Engine.height);
 
@@ -607,23 +603,23 @@ const Game = {
     }
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffd764';
-    ctx.font = 'bold 42px monospace';
+    ctx.fillStyle = Tokens.color.goldBright;
+    ctx.font = Tokens.font.win;
     ctx.fillText('CONGRATULATIONS', Engine.width / 2, Engine.height / 2 - 70);
 
-    ctx.fillStyle = '#e8e0d0';
-    ctx.font = '18px monospace';
+    ctx.fillStyle = Tokens.color.ink;
+    ctx.font = Tokens.font.lg;
     ctx.fillText('You escaped Clown City', Engine.width / 2, Engine.height / 2 - 25);
 
-    ctx.fillStyle = 'rgba(200, 190, 170, 0.7)';
-    ctx.font = '14px monospace';
+    ctx.fillStyle = Tokens.rgba(Tokens.color.dust, 0.7);
+    ctx.font = Tokens.font.body;
     ctx.fillText(`total deaths: ${this.totalDeaths}`, Engine.width / 2, Engine.height / 2 + 15);
     ctx.fillText(`total gems: ${this.totalGems}`, Engine.width / 2, Engine.height / 2 + 38);
 
     if (Math.sin(t * 3) > -0.3) {
-      ctx.fillStyle = 'rgba(255, 215, 100, 0.6)';
-      ctx.font = '16px monospace';
-      ctx.fillText('PRESS SPACE', Engine.width / 2, Engine.height / 2 + 80);
+      ctx.fillStyle = Tokens.rgba(Tokens.color.gold, 0.6);
+      ctx.font = Tokens.font.md;
+      ctx.fillText('TAP  /  SPACE', Engine.width / 2, Engine.height / 2 + 80);
     }
   }
 };

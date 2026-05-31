@@ -9,17 +9,13 @@ const Level = {
 
   // Tile legend:
   // 1 = solid, 0 = air, g = goal
-  // ^ = spike (up), v = spike (down), < = spike (left), > = spike (right)
   // c = checkpoint, o = collectible (gem)
-  // Materials: B = bouncy, I = ice/slippery, S = sponge/grabbable, D = breakable (destructible)
+  // T = treadmill (caps Bozo's speed at 0.5 and bleeds momentum)
 
-  // Material definitions: how each material affects physics and looks
+  // Material definitions: only the colour matters here; physics live in Player.
   materials: {
-    solid:     { friction: 1.0, bounce: 0, grabbable: false, breakable: false, color: null },
-    bouncy:    { friction: 0.8, bounce: 0.7, grabbable: false, breakable: false, color: ['#2a6630', '#338844', '#44aa55'] },
-    ice:       { friction: 0.15, bounce: 0, grabbable: false, breakable: false, color: ['#3a5a7a', '#4a7a9a', '#6a9abb'] },
-    sponge:    { friction: 1.5, bounce: 0, grabbable: true, breakable: false, color: ['#7a5a2a', '#9a7a3a', '#bb9a55'] },
-    breakable: { friction: 1.0, bounce: 0, grabbable: false, breakable: true, color: ['#5a4a3a', '#6a5a4a', '#7a6a5a'], breakTime: 0.4 },
+    solid:     { color: null },
+    treadmill: { color: Tokens.color.treadmill },
   },
   // Theme palettes used by draw()
   themes: {
@@ -55,136 +51,126 @@ const Level = {
       theme: 'circus',
       spawn: [3, 21],
       entities: [
-        // One-way platforms as stepping stones from ground to upper area
-        { type: 'oneway', x: 22 * 32, y: 19 * 32, w: 96 },
-        // Moving platform bridging dash gap (chimney top to material area)
-        { type: 'platform', x: 55 * 32, y: 9 * 32, w: 64, h: 10, toX: 60 * 32, toY: 9 * 32, speed: 60 },
-        // Patrol enemy on ground floor
-        { type: 'patrol', x: 28 * 32, y: 23 * 32 - 20, range: 160, speed: 50 },
+        // One-way ledge over the first patrol (ride over, or drop to stomp).
+        { type: 'oneway', x: 17 * 32, y: 18 * 32, w: 96 },
+        { type: 'patrol', x: 20 * 32, y: 22 * 32 - 20, range: 96, speed: 55 },
+        // One-way ledge over the second patrol, just past the checkpoint.
+        { type: 'oneway', x: 51 * 32, y: 18 * 32, w: 96 },
+        { type: 'patrol', x: 53 * 32, y: 22 * 32 - 20, range: 64, speed: 55 },
+        // Ferry platform across the wide gap before the goal run.
+        { type: 'platform', x: 57 * 32, y: 22 * 32, w: 64, toX: 61 * 32, toY: 22 * 32, speed: 60 },
       ],
-      // 80 wide × 25 tall — Tutorial level
-      // Flow: run → jump → wall jump → dash → bouncy/ice/breakable → sponge climb → goal
+      // 80 wide x 25 tall - unicycle track: jump the pits, brake-kick or stomp
+      // the patrols, slow over the treadmill, ferry the wide gap, roll to goal.
       data: [
-        '11111111111111111111111111111111111111111111111111111111111111111111111111111111',
-        '100000000000000000000000g0000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000S0111110S000000000000000000000000000000000000000000000000001',
-        '10000000000000000000S0111110S000000000000000000000000000000000000000000000000001',
-        '10000000000000000000S0000000S000000000000000000000000000000000000000000000000001',
-        '10000000000000000000S000o000S000000000000000000000000000000000000000000000000001',
-        '10000000000000000000S0000000S000000000000000000000000000000000000000000000000001',
-        '10000000000000000000S0000000S00000000000000000000o000000000000000000000000000001',
-        '10000000000000000000S0000000S000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000011111000000000o0c000000000BBB110000000000000000000000001',
-        '100000000000000000000000000000111IIII11111DDDD1110000000000000111111100000000001',
-        '10000000000000000000000000000000000000000000000000000000000000100000100000000001',
-        '10000000000000000000000000000000000000000000000000000000000000100000100000000001',
-        '10000000000000000000000000000000000000000000000000000000000000100000100000000001',
-        '10000000000000000000000000000000000000000000000000000000000000100o00100000000001',
-        '10000000000000000000000000000000000000000000000000000000000000100000100000000001',
-        '1000000000000000000000000000000000000000000000000000000000c000100000100000000001',
-        '10000000000000000000000000000000000000000000000000000000111111111111111000000001',
         '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000001111100000000000000000000000001',
-        '10000000000000000000000000000000000000000000o00000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000011111000000000000000000000000000000001',
-        '11111111111111111000000000000000000000000000000000000000000000000000000000000001',
-        '11111111111111111^^1111111111111111100001111111111111111111111111111111111111111',
-        '11111111111111111111111111111111111111111111111111111111111111111111111111111111',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000o00000000000000000001',
+        '10000000o0000000000000000o0000000000o0000000000000co0000000000000000o000000g0001',
+        '111111111111000011111111111111TTTTTTTTTTT111110000111111100000011111111111111111',
+        '11111111111100001111111111111111111111111111111000011111110000001111111111111111',
+        '11111111111100001111111111111111111111111111111000011111110000001111111111111111',
       ]
     },
     {
       name: 'The Stage',
       theme: 'harlequin',
-      spawn: [3, 20],
+      spawn: [3, 21],
       entities: [
-        // One-way platforms as alternative routes
         { type: 'oneway', x: 15 * 32, y: 18 * 32, w: 96 },
-        { type: 'oneway', x: 40 * 32, y: 12 * 32, w: 64 },
-        // Sawblade near the spike wall
-        { type: 'sawblade', x: 42 * 32, y: 12 * 32, toX: 42 * 32, toY: 16 * 32, speed: 65, radius: 11 },
-        // Moving platform over spike gauntlet
-        { type: 'platform', x: 36 * 32, y: 22 * 32, w: 64, h: 10, toX: 42 * 32, toY: 22 * 32, speed: 70 },
-        // Patrol enemies
-        { type: 'patrol', x: 50 * 32, y: 22 * 32 - 20, range: 128, speed: 55 },
+        { type: 'patrol', x: 16 * 32, y: 22 * 32 - 20, range: 64, speed: 60 },
+        { type: 'patrol', x: 28 * 32, y: 22 * 32 - 20, range: 96, speed: 60 },
+        // Ferry across the wide gap.
+        { type: 'platform', x: 50 * 32, y: 22 * 32, w: 64, toX: 54 * 32, toY: 22 * 32, speed: 65 },
+        { type: 'patrol', x: 64 * 32, y: 22 * 32 - 20, range: 128, speed: 65 },
       ],
-      // 80 wide × 24 tall — Intermediate gauntlet
-      // Combines all mechanics: spike gauntlets, materials required, sponge+goal
+      // 80 wide x 25 tall - two early pits, a long treadmill, then a ferry gap.
       data: [
-        '11111111111111111111111111111111111111111111111111111111111111111111111111111111',
-        '1000000000000000000000000000000000000000000000000000000000000000000000g000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000111110000001',
-        '100000000000000000000000000000000000000000000000000000000000000000000000S0000001',
-        '100000000000000000000000000000000000000000000000000000000000000000001111S0000001',
-        '100000000000000000000000000000000000000000000000000000000000000000000000S0000001',
-        '100000000000000000000000000000000000000000000000000000000000000000000000S00c0001',
-        '100000000000000000000000000000000000000000000000000000000000000o0000111110111111',
-        '10000000000000000000000000000000000000000000000000000000000011111110000000000001',
-        '1000000000000000000000000000000000000000000001000000000c000000000000000000000001',
-        '100000000000000000000000000000000000000000000>0111110011DDDD10000000000000000001',
-        '100000000000000000000000000000000000000000000>0000000000000000000000000000000001',
-        '100000000000000000000000000000000000000000000>0000o00011^^^^11100000000000000001',
-        '100000000000000000000000000000000000000o00000>0011111000000000000000000000000001',
-        '100000000000000000000000000000000000111111100>00000000000000001BBB10000000000001',
-        '10000000000000000000000000000000000000000000010000000000000000000000000000000001',
-        '1000000000000000000000000000III1110000000000000000000000000000000000000000000001',
-        '1000000000000000000000c000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000111110000000000000000000000000000000000000000000000000000001',
-        '10000000000000o00000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000011111000000000000000000000000000000000000000000000000000000000000001',
         '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '11111111111^^^111111111^^11111111111^^^^^^^^111111111111111111111111111111111111',
-        '11111111111111111111111111111111111111111111111111111111111111111111111111111111',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000000000000000o000000000000000000000000001',
+        '10000o000000000000o000000000000000000000o000000000000000c0o00000000000o0000g0001',
+        '1111111111000011111111000011111111TTTTTTTTTTTT1111000000111111111111111111111111',
+        '11111111110000111111110000111111111111111111111111110000001111111111111111111111',
+        '11111111110000111111110000111111111111111111111111110000001111111111111111111111',
       ]
     },
     {
       name: 'The Workshop',
       theme: 'puppet',
-      spawn: [3, 26],
+      spawn: [3, 21],
       entities: [
-        // One-way platforms for vertical progression
-        { type: 'oneway', x: 20 * 32, y: 24 * 32, w: 96 },
-        { type: 'oneway', x: 12 * 32, y: 16 * 32, w: 64 },
-        // Moving platform near the top
-        { type: 'platform', x: 15 * 32, y: 6 * 32, w: 64, h: 10, toX: 25 * 32, toY: 6 * 32, speed: 50 },
-        // Sawblades in the tower
-        { type: 'sawblade', x: 24 * 32, y: 14 * 32, toX: 24 * 32, toY: 10 * 32, speed: 55, radius: 12 },
-        { type: 'sawblade', x: 15 * 32, y: 20 * 32, toX: 15 * 32, toY: 18 * 32, speed: 50, radius: 10 },
-        // Patrol enemy on ground floor
-        { type: 'patrol', x: 28 * 32, y: 28 * 32 - 20, range: 160, speed: 50 },
+        // Two ferry gaps and a one-way perch over the mid patrol.
+        { type: 'platform', x: 31 * 32, y: 22 * 32, w: 64, toX: 34 * 32, toY: 22 * 32, speed: 70 },
+        { type: 'patrol', x: 13 * 32, y: 22 * 32 - 20, range: 96, speed: 65 },
+        { type: 'oneway', x: 37 * 32, y: 18 * 32, w: 96 },
+        { type: 'patrol', x: 38 * 32, y: 22 * 32 - 20, range: 96, speed: 65 },
+        { type: 'platform', x: 58 * 32, y: 22 * 32, w: 64, toX: 62 * 32, toY: 22 * 32, speed: 70 },
+        { type: 'patrol', x: 66 * 32, y: 22 * 32 - 20, range: 128, speed: 70 },
       ],
-      // 50 wide × 30 tall — Expert vertical tower
-      // Demands mastery: grab-slingshot, ice momentum, breakable timing, sawblade dodging
+      // 80 wide x 25 tall - the hard track: tight pits, two treadmills, two ferries.
       data: [
-        '11111111111111111111111111111111111111111111111111',
-        '1000000000000000000000000g000000000000000000000001',
-        '10000000000000000000001111111000000000000000000001',
-        '10000000000000000000000000000000000o00000000000001',
-        '10000000000000000000000000000000111111100000000001',
-        '10000000000000000000000000000000000000000000000001',
-        '10000000000000000000111DDDDD1110000000000000000001',
-        '10000000000000000000000000000000000000000000000001',
-        '1S00000011IIIII110000000000000000000000000000000S1',
-        '1S00000000000000000000000000c0o00000000000000000S1',
-        '1S0000000000000000000000011111111111000000000000S1',
-        '>S0000000000000000000000000000000000000000000000S<',
-        '1S0000000000111111100000000000000000000000000000S1',
-        '1S0000000000000000000000000000000o00000000000000S1',
-        '10000000000000000000000000000011111110000000000001',
-        '>000000000000000000000000000000000000000000000000<',
-        '10000000001111111000000000000000000000000000000001',
-        '1000000000000000000000000000000000000000000c000001',
-        '1S00000000000000000000000o000000000111DDDD111000S1',
-        '1S0000000000000000000000000000000000000000000000S1',
-        '1S0000000000000000001111BBB110000000000000000000S1',
-        '1S0000000000000000000000000000000000000000000000S1',
-        '1S00000011IIII1000000000000000000000000000000000S1',
-        '1S00000000000000000000000000000000000000c0000000S1',
-        '10000000000000000000000000000000000000111110000001',
-        '10000000000000000000000000000000o00000000000000001',
-        '10000000000000011111000000000011111100000000000001',
-        '10000000000000000000000000000000000000000000000001',
-        '1111111111111111111^^11111111111111111111111111111',
-        '11111111111111111111111111111111111111111111111111',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '100000000000000000000000000000000o00000000000000000000000000o0000000000000000001',
+        '10000o0000000000o000000000000000000000o00000000000000c0o00000000000000o0000g0001',
+        '11111111000011111100000TTTTTTTTT0000011111111TTTTTTTTT11111000000111111111111111',
+        '11111111000011111100000111111111000001111111111111111111110000001111111111111111',
+        '11111111000011111100000111111111000001111111111111111111110000001111111111111111',
       ]
     }
   ],
@@ -206,8 +192,7 @@ const Level = {
     this.spawnX = map.spawn[0] * this.tileSize;
     this.spawnY = map.spawn[1] * this.tileSize;
 
-    const spikeDirections = { '^': 'up', 'v': 'down', '<': 'left', '>': 'right' };
-    const materialMap = { 'B': 'bouncy', 'I': 'ice', 'S': 'sponge', 'D': 'breakable' };
+    const materialMap = { 'T': 'treadmill' };
 
     for (let row = 0; row < data.length; row++) {
       for (let col = 0; col < data[row].length; col++) {
@@ -218,25 +203,9 @@ const Level = {
         if (ch === '1') {
           this.tiles.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, type: 'solid', material: 'solid' });
         } else if (materialMap[ch]) {
-          const mat = materialMap[ch];
-          this.tiles.push({
-            x: tx, y: ty, w: this.tileSize, h: this.tileSize,
-            type: 'solid', material: mat,
-            breaking: false, breakTimer: 0, broken: false
-          });
+          this.tiles.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, type: 'solid', material: materialMap[ch] });
         } else if (ch === 'g') {
           this.tiles.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, type: 'goal' });
-        } else if (spikeDirections[ch]) {
-          // Spikes: full tile for rendering, but the lethal area is the pointy half
-          const dir = spikeDirections[ch];
-          const s = this.tileSize;
-          let hx = tx, hy = ty, hw = s, hh = s;
-          // Shrink hitbox to the pointy half of the spike
-          if (dir === 'up')    { hy = ty; hh = s / 2; }
-          if (dir === 'down')  { hy = ty + s / 2; hh = s / 2; }
-          if (dir === 'left')  { hx = tx; hw = s / 2; }
-          if (dir === 'right') { hx = tx + s / 2; hw = s / 2; }
-          this.tiles.push({ x: tx, y: ty, w: s, h: s, hx, hy, hw, hh, type: 'spike', dir });
         } else if (ch === 'c') {
           this.checkpoints.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, active: false });
         } else if (ch === 'o') {
@@ -246,10 +215,8 @@ const Level = {
       }
     }
 
-    // Cache hazard and goal rects (avoid per-frame allocation)
-    this._cachedHazards = this.tiles
-      .filter(t => t.type === 'spike')
-      .map(t => ({ x: t.hx, y: t.hy, w: t.hw, h: t.hh }));
+    // No static tile hazards on the lean track — danger is pits + enemies.
+    this._cachedHazards = [];
     this._cachedGoals = this.tiles.filter(t => t.type === 'goal');
 
     // Build spatial grid for fast tile lookups (getTilesNear)
@@ -299,42 +266,6 @@ const Level = {
     return result;
   },
 
-  // Update breakable tiles (called from game loop)
-  updateBreakables(dt) {
-    for (const tile of this.tiles) {
-      if (tile.material !== 'breakable' || tile.broken) continue;
-      if (tile.breaking) {
-        tile.breakTimer -= dt;
-        if (tile.breakTimer <= 0) {
-          tile.broken = true;
-          // Crumble particles
-          Particles.burst(
-            tile.x + tile.w / 2, tile.y + tile.h / 2,
-            12, 120, 'rgba(120,100,80,0.7)', 0.4
-          );
-        }
-      }
-    }
-  },
-
-  // Start breaking a tile (called when player stands on it)
-  startBreaking(tile) {
-    if (tile.material !== 'breakable' || tile.breaking || tile.broken) return;
-    tile.breaking = true;
-    tile.breakTimer = this.materials.breakable.breakTime;
-  },
-
-  // Reset all breakable tiles (called on respawn)
-  resetBreakables() {
-    for (const tile of this.tiles) {
-      if (tile.material === 'breakable') {
-        tile.breaking = false;
-        tile.breakTimer = 0;
-        tile.broken = false;
-      }
-    }
-  },
-
   // Get material for a tile at a position (O(1) grid lookup)
   getMaterialAt(x, y) {
     const key = Math.floor(x / this.tileSize) + ',' + Math.floor(y / this.tileSize);
@@ -374,8 +305,8 @@ const Level = {
     const camY = Camera.y * 0.3;
     ctx.fillStyle = theme.dotColor;
     for (let i = 0; i < 60; i++) {
-      const bx = ((i * 137) % 3200) - camX % 3200;
-      const by = ((i * 89) % 1000) - camY % 1000;
+      const bx = ((i * 137) % Tokens.motion.parallaxX) - camX % Tokens.motion.parallaxX;
+      const by = ((i * 89) % Tokens.motion.parallaxY) - camY % Tokens.motion.parallaxY;
       const size = 2 + (i % 3);
       ctx.fillRect(bx, by, size, size);
     }
@@ -385,7 +316,7 @@ const Level = {
     ctx.save();
     if (currentTheme === 'circus') {
       // Faint tent stripe pattern
-      const stripeW = 120;
+      const stripeW = Tokens.motion.stripeW;
       const offsetX = -Camera.x * 0.15;
       for (let sx = -stripeW; sx < Engine.width + stripeW; sx += stripeW * 2) {
         ctx.fillStyle = 'rgba(180, 30, 30, 0.03)';
@@ -393,7 +324,7 @@ const Level = {
       }
     } else if (currentTheme === 'harlequin') {
       // Diamond / checkerboard pattern (stage floor vibe)
-      const dSize = 80;
+      const dSize = Tokens.motion.diamondSize;
       const offX = (-Camera.x * 0.1) % (dSize * 2);
       const offY = (-Camera.y * 0.1) % (dSize * 2);
       ctx.fillStyle = 'rgba(100, 60, 160, 0.02)';
@@ -508,92 +439,15 @@ const Level = {
           ctx.fillRect(tile.x + tile.w - 2, tile.y, 2, tile.h);
         }
 
-        // Material-specific visual indicators
-        if (tile.material === 'bouncy') {
-          // Spring arrows
-          ctx.fillStyle = 'rgba(255,255,255,0.2)';
-          const cx = tile.x + tile.w / 2;
-          ctx.beginPath();
-          ctx.moveTo(cx - 6, tile.y + 12);
-          ctx.lineTo(cx, tile.y + 4);
-          ctx.lineTo(cx + 6, tile.y + 12);
-          ctx.fill();
-        } else if (tile.material === 'ice') {
-          // Shine streaks
-          ctx.fillStyle = 'rgba(200,230,255,0.15)';
-          ctx.fillRect(tile.x + 4, tile.y + 6, 10, 1);
-          ctx.fillRect(tile.x + 14, tile.y + 14, 12, 1);
-          ctx.fillRect(tile.x + 6, tile.y + 22, 8, 1);
-        } else if (tile.material === 'sponge') {
-          // Porous dots
-          ctx.fillStyle = 'rgba(0,0,0,0.15)';
-          for (let dx = 5; dx < tile.w; dx += 8) {
-            for (let dy = 5; dy < tile.h; dy += 8) {
-              ctx.fillRect(tile.x + dx, tile.y + dy, 2, 2);
-            }
-          }
-        } else if (tile.material === 'breakable') {
-          // Crack lines
-          ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(tile.x + 8, tile.y);
-          ctx.lineTo(tile.x + 16, tile.y + 16);
-          ctx.lineTo(tile.x + 24, tile.y + 10);
-          ctx.moveTo(tile.x + 4, tile.y + 20);
-          ctx.lineTo(tile.x + 14, tile.y + 28);
-          ctx.stroke();
-          // Flash when breaking
-          if (tile.breaking) {
-            const flash = Math.sin(tile.breakTimer * 20) * 0.15 + 0.1;
-            ctx.fillStyle = `rgba(255,255,255,${flash})`;
-            ctx.fillRect(tile.x, tile.y, tile.w, tile.h);
+        // Material-specific visual indicator
+        if (tile.material === 'treadmill') {
+          // Scrolling belt chevrons
+          ctx.fillStyle = Tokens.rgba(Tokens.color.belt, 0.18);
+          const off = Math.floor((performance.now() / 1000 * 40) % 16);
+          for (let bx = 0; bx < tile.w; bx += 16) {
+            ctx.fillRect(tile.x + ((bx + off) % tile.w), tile.y + tile.h / 2 - 1, 9, 2);
           }
         }
-      } else if (tile.type === 'spike') {
-        // Draw spike triangles
-        ctx.fillStyle = '#dd3333';
-        ctx.beginPath();
-        const s = tile.w;
-        if (tile.dir === 'up') {
-          ctx.moveTo(tile.x, tile.y + s);
-          ctx.lineTo(tile.x + s / 2, tile.y + 4);
-          ctx.lineTo(tile.x + s, tile.y + s);
-        } else if (tile.dir === 'down') {
-          ctx.moveTo(tile.x, tile.y);
-          ctx.lineTo(tile.x + s / 2, tile.y + s - 4);
-          ctx.lineTo(tile.x + s, tile.y);
-        } else if (tile.dir === 'left') {
-          ctx.moveTo(tile.x + s, tile.y);
-          ctx.lineTo(tile.x + 4, tile.y + s / 2);
-          ctx.lineTo(tile.x + s, tile.y + s);
-        } else if (tile.dir === 'right') {
-          ctx.moveTo(tile.x, tile.y);
-          ctx.lineTo(tile.x + s - 4, tile.y + s / 2);
-          ctx.lineTo(tile.x, tile.y + s);
-        }
-        ctx.fill();
-        // Highlight
-        ctx.fillStyle = '#ff5555';
-        ctx.beginPath();
-        if (tile.dir === 'up') {
-          ctx.moveTo(tile.x + s * 0.3, tile.y + s);
-          ctx.lineTo(tile.x + s / 2, tile.y + 8);
-          ctx.lineTo(tile.x + s * 0.7, tile.y + s);
-        } else if (tile.dir === 'down') {
-          ctx.moveTo(tile.x + s * 0.3, tile.y);
-          ctx.lineTo(tile.x + s / 2, tile.y + s - 8);
-          ctx.lineTo(tile.x + s * 0.7, tile.y);
-        } else if (tile.dir === 'left') {
-          ctx.moveTo(tile.x + s, tile.y + s * 0.3);
-          ctx.lineTo(tile.x + 8, tile.y + s / 2);
-          ctx.lineTo(tile.x + s, tile.y + s * 0.7);
-        } else if (tile.dir === 'right') {
-          ctx.moveTo(tile.x, tile.y + s * 0.3);
-          ctx.lineTo(tile.x + s - 8, tile.y + s / 2);
-          ctx.lineTo(tile.x, tile.y + s * 0.7);
-        }
-        ctx.fill();
       } else if (tile.type === 'goal') {
         // Pulsing goal with theme color
         const gc = theme.goalColor;
@@ -631,7 +485,7 @@ const Level = {
       ctx.closePath();
       ctx.fill();
       // Inner highlight
-      ctx.fillStyle = `rgba(255, 255, 255, ${pulse * 0.4})`;
+      ctx.fillStyle = Tokens.rgba(Tokens.color.white, pulse * 0.4);
       ctx.beginPath();
       ctx.moveTo(cx, cy - 4);
       ctx.lineTo(cx + 2, cy);
@@ -646,7 +500,7 @@ const Level = {
       const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 500);
       if (cp.active) {
         // Active checkpoint: bright gold flag
-        ctx.fillStyle = `rgba(255, 215, 50, ${0.7 + pulse * 0.3})`;
+        ctx.fillStyle = Tokens.rgba(Tokens.color.goldFlag, 0.7 + pulse * 0.3);
         // Flagpole
         ctx.fillRect(cp.x + cp.w / 2 - 1, cp.y + 4, 2, cp.h - 4);
         // Flag

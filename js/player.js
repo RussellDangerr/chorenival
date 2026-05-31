@@ -1,5 +1,20 @@
-// ─── Player: momentum-based platformer character ───
-// Tuned for Super Meat Boy-level tightness
+// ─── Player: Bozo on a unicycle — bidirectional auto-runner ───
+// Bozo is ALWAYS moving; the player only steers (swipe) and jumps (tap).
+// Reversing direction is a weighty, momentum-based turnaround whose braking
+// lunge ("the wheel kicks out the old way") doubles as the attack.
+
+// Move `cur` toward `target` by at most `maxDelta` (frame-rate independent).
+function approach(cur, target, maxDelta) {
+  if (cur < target) return Math.min(cur + maxDelta, target);
+  if (cur > target) return Math.max(cur - maxDelta, target);
+  return cur;
+}
+
+// Axis-aligned bounding-box overlap test.
+function aabb(a, b) {
+  return a.x + a.w > b.x && a.x < b.x + b.w && a.y + a.h > b.y && a.y < b.y + b.h;
+}
+
 const Player = {
   // ── Hitbox (collision) ──
   x: 100, y: 300,
@@ -13,26 +28,25 @@ const Player = {
   // ── Velocity ──
   vx: 0, vy: 0,
 
-  // ── Movement tuning — SMB-tight ──
-  groundAccel: 4000,     // near-instant top speed (was 2800)
-  airAccel: 2800,        // ~70% of ground (responsive air control)
-  groundFriction: 16,    // snappy stop
-  airFriction: 1.5,      // minimal air drag
-  maxRunSpeed: 340,
+  // ── Unicycle momentum (auto-runner) ──
+  runSpeed: 300,            // cruise top speed (speed = 1)
+  startRampTime: 1.5,       // level start: ramp 0 -> full over this many seconds
+  accelRate: 1400,          // px/s^2 — chase target during ramp / cruise
+  reverseDecel: 2400,       // px/s^2 — braking old momentum during a turnaround
+  reverseAccel: 1600,       // px/s^2 — accelerating into the new direction
+  pauseAtZeroTime: 0.05,    // brief commit beat at the bottom of a reversal
+  zeroEpsilon: 12,          // |vx| under this counts as "stopped"
+  treadmillCap: 150,        // 0.5 * runSpeed — speed cap while on a treadmill
+  treadmillDamp: 3000,      // px/s^2 — damp toward the cap (non-directional)
+  brakeWindow: 0.18,        // max lifetime of the wheel-throw attack hitbox
   maxFallSpeed: 720,
 
-  // ── Jump tuning ──
+  // ── Jump tuning (fixed-height tap jump) ──
   jumpForce: -480,
-  jumpCutMultiplier: 0.35,   // release early = short hop
   gravityUp: 1300,           // gravity while rising (lighter, floaty arc)
   gravityDown: 2100,         // gravity while falling (1.6x — snappy descent)
 
-  // ── Wall mechanics ──
-  wallSlideSpeed: 80,
-  wallJumpForce: { x: 360, y: -440 },
-  wallStickTime: 0.06,
-
-  // ── Coyote time / jump buffer (tightened) ──
+  // ── Coyote time / jump buffer ──
   coyoteTime: 0.06,      // ~7 frames at 120Hz
   coyoteTimer: 0,
 
@@ -45,10 +59,17 @@ const Player = {
   // ── State ──
   grounded: false,
   wasGrounded: false,     // for coyote: only grant when walking off, not jumping off
-  wallDir: 0,
-  wallStickTimer: 0,
-  facing: 1,
-  jumpHeld: false,
+  wallDir: 0,             // internal collision state (set in resolveCollisions)
+  facing: 1,              // FIXED visual facing — Bozo always faces the same way
+
+  // ── Unicycle run state ──
+  travelDir: 1,           // committed direction of travel, never 0
+  desiredDir: 1,          // last steer intent
+  runState: 'ramp',       // 'ramp' | 'cruise' | 'brake'
+  rampT: 0,               // 0..1 start-ramp progress
+  brakeTimer: 0,          // counts down the wheel-throw window during a brake
+  pausedAtZero: 0,        // commit-beat accumulator at the bottom of a reversal
+  attackDir: 0,           // wheel-throw direction (= old travelDir); 0 = inactive
 
   // ── Animation state ──
   squash: 1,
@@ -64,23 +85,13 @@ const Player = {
     run:       { frames: [1, 2, 3, 4, 5, 6], duration: 0.07, loop: true },
     jump:      { frames: [7, 8], duration: 0.08, loop: false, next: 'fall' },
     fall:      { frames: [9], duration: 0.1, loop: true },
-    wallSlide: { frames: [10], duration: 0.1, loop: true },
     land:      { frames: [11, 0], duration: 0.04, loop: false, next: 'idle' },
-    dash:      { frames: [12], duration: 0.1, loop: true },
-    grab:      { frames: [10], duration: 0.1, loop: true },
     death:     { frames: [13], duration: 0.1, loop: true },
   },
 
   // ── Sprite sheet (null = use rect fallback) ──
   spriteSheet: null,
   spriteColumns: 8,  // columns in spritesheet grid
-
-  // ── Dash ──
-  canDash: true,
-  dashing: false,
-  dashTimer: 0,
-  dashDuration: 0.12,
-  dashSpeed: 720,
 
   // ── Death & respawn ──
   dead: false,
@@ -95,13 +106,6 @@ const Player = {
 
   // ── Hazard hitbox (smaller than platform hitbox for forgiving near-misses) ──
   hazardShrink: 3,          // pixels inset on each side
-
-  // ── Grab mechanic (sponge surfaces) ──
-  grabbing: false,
-  grabTile: null,
-  grabDir: 0,               // -1 = left wall, 1 = right wall
-  grabSlingshotSpeed: 600,   // launch speed when releasing grab
-  grabSlingshotUp: -500,     // vertical boost on slingshot
 
   // ── Material state ──
   groundMaterial: 'solid',   // material of tile player is standing on
@@ -119,11 +123,15 @@ const Player = {
     this.grounded = false;
     this.wasGrounded = false;
     this.coyoteTimer = 0;
-    this.dashing = false;
-    this.canDash = true;
-    this.grabbing = false;
-    this.grabTile = null;
-    this.grabDir = 0;
+    // Restart the unicycle: slowly ramp forward (right) from a standstill.
+    this.travelDir = 1;
+    this.desiredDir = 1;
+    this.runState = 'ramp';
+    this.rampT = 0;
+    this.brakeTimer = 0;
+    this.pausedAtZero = 0;
+    this.attackDir = 0;
+    this.facing = 1;
     this.dead = false;
     this.deathTimer = 0;
     this.respawning = true;
@@ -145,18 +153,17 @@ const Player = {
     // Death burst particles
     Particles.burst(
       this.x + this.w / 2, this.y + this.h / 2,
-      20, 250, 'rgba(255, 80, 80, 0.8)', 0.4
+      20, 250, Tokens.rgba(Tokens.color.danger, 0.8), 0.4
     );
     Particles.burst(
       this.x + this.w / 2, this.y + this.h / 2,
-      10, 150, 'rgba(255, 255, 255, 0.6)', 0.3
+      10, 150, Tokens.rgba(Tokens.color.white, 0.6), 0.3
     );
     // Hitstop: freeze the game for a few frames
     Engine.hitstop(0.05);
   },
 
   respawn() {
-    Level.resetBreakables();
     this.spawn(this.checkpointX, this.checkpointY);
   },
 
@@ -210,149 +217,63 @@ const Player = {
       }
     }
 
-    const leftHeld = Input.held('ArrowLeft') || Input.held('KeyA');
-    const rightHeld = Input.held('ArrowRight') || Input.held('KeyD');
-    const jumpBuffered = Input.buffered('Space') || Input.buffered('ArrowUp') || Input.buffered('KeyW');
-    const jumpHeldNow = Input.held('Space') || Input.held('ArrowUp') || Input.held('KeyW');
-    const dashPressed = Input.pressed('ShiftLeft') || Input.pressed('ShiftRight') || Input.pressed('KeyZ');
-    const grabHeld = Input.held('KeyE') || Input.held('KeyX');
+    // ── Steer intent (sticky) + jump (tap / keyboard) ──
+    const wantDir = Input.runDir;
+    const jumpBuffered = Input.jumpBuffered();
 
-    let moveDir = 0;
-    if (leftHeld) moveDir -= 1;
-    if (rightHeld) moveDir += 1;
-
-    if (moveDir !== 0) this.facing = moveDir;
-
-    // ── Dash ──
-    if (dashPressed && this.canDash && !this.dashing) {
-      this.dashing = true;
-      this.dashTimer = this.dashDuration;
-      this.canDash = false;
-      this.vx = this.facing * this.dashSpeed;
-      this.vy = 0;
-      this.squash = 0.5;
-      this.setAnim('dash');
-      Audio.dash();
-      for (let i = 0; i < 8; i++) {
-        Particles.emit(
-          this.x + this.w / 2, this.y + this.h / 2,
-          -this.facing * (100 + Math.random() * 200),
-          (Math.random() - 0.5) * 100,
-          'rgba(255,255,255,0.6)', 0.2 + Math.random() * 0.15
-        );
-      }
+    // Reversal: a steer against committed travel starts a weighty turnaround.
+    // The wheel "kicks" out in the OLD direction (attackDir) as a braking
+    // lunge — and that lunge is the attack hitbox (see getAttackRect).
+    if (wantDir !== 0 && wantDir !== this.travelDir && this.runState !== 'brake') {
+      this.runState = 'brake';
+      this.brakeTimer = this.brakeWindow;
+      this.pausedAtZero = 0;
+      this.attackDir = this.travelDir;     // old direction = lunge / attack dir
+      this.squash = 1.25;
+      Audio.bounce();
+      this._spawnBrakeDust();
     }
+    if (wantDir !== 0) this.desiredDir = wantDir;
 
-    if (this.dashing) {
-      this.dashTimer -= dt;
-      if (this.dashTimer <= 0) {
-        this.dashing = false;
-        this.vx *= 0.6;
-      }
-      this.x += this.vx * dt;
-      this.y += this.vy * dt;
-      this.resolveCollisions();
-      this.updateAnim(dt);
-      return;
-    }
+    // ── Unicycle momentum driver (replaces free-move accel/friction) ──
+    const onTreadmill = this.grounded && this.groundMaterial === 'treadmill';
 
-    // ── Grab mechanic (sponge surfaces) ──
-    if (this.grabbing) {
-      // Stick to the sponge wall
-      this.vx = 0;
-      this.vy = 0;
-      // Release: jump to slingshot, or just let go
-      if (!grabHeld) {
-        // Slingshot launch in the direction player is aiming
-        const aimX = moveDir !== 0 ? moveDir : -this.grabDir;
-        this.vx = aimX * this.grabSlingshotSpeed;
-        this.vy = this.grabSlingshotUp;
-        this.grabbing = false;
-        this.grabTile = null;
-        this.canDash = true;
-        this.squash = 1.4;
-        this.setAnim('jump');
-        Audio.wallJump();
-        // Slingshot particles
-        for (let i = 0; i < 8; i++) {
-          Particles.emit(
-            this.x + this.w / 2, this.y + this.h / 2,
-            -this.grabDir * (80 + Math.random() * 160),
-            (Math.random() - 0.5) * 120,
-            'rgba(180,150,80,0.6)', 0.2 + Math.random() * 0.15
-          );
+    if (this.runState === 'ramp') {
+      // Level start: ease from a standstill up to full speed.
+      this.rampT = Math.min(1, this.rampT + dt / this.startRampTime);
+      const target = this.travelDir * this.runSpeed * this.rampT;
+      this.vx = approach(this.vx, target, this.accelRate * dt);
+      if (this.rampT >= 1) this.runState = 'cruise';
+    } else if (this.runState === 'brake') {
+      this.brakeTimer -= dt;
+      const movingOldWay = Math.sign(this.vx) === this.travelDir && Math.abs(this.vx) > this.zeroEpsilon;
+      if (movingOldWay) {
+        // Phase A: brake the old momentum toward zero (the wheel kicks forward).
+        this.vx = approach(this.vx, 0, this.reverseDecel * dt);
+      } else {
+        // Phase B: a brief commit beat at the bottom, then flip to the new way.
+        this.vx = approach(this.vx, 0, this.reverseDecel * dt);
+        this.pausedAtZero += dt;
+        if (this.pausedAtZero >= this.pauseAtZeroTime) {
+          this.travelDir = this.desiredDir;
+          this.attackDir = 0;
+          this.runState = 'cruise';
         }
-      } else if (jumpBuffered) {
-        // Jump off sponge wall (like wall jump but stronger)
-        this.vx = -this.grabDir * this.grabSlingshotSpeed;
-        this.vy = this.grabSlingshotUp;
-        this.grabbing = false;
-        this.grabTile = null;
-        this.canDash = true;
-        this.jumpHeld = true;
-        this.squash = 1.4;
-        this.setAnim('jump');
-        Audio.wallJump();
-        Input.consumeBuffer('Space');
-        Input.consumeBuffer('ArrowUp');
-        Input.consumeBuffer('KeyW');
-      }
-      if (this.grabbing) {
-        this.setAnim('grab');
-        this.updateAnim(dt);
-        this.checkHazards();
-        return;
-      }
-    }
-
-    // ── Try to initiate grab on sponge wall ──
-    if (grabHeld && !this.grounded && this.wallDir !== 0 && !this.grabbing) {
-      // Check if the wall tile is sponge material
-      const checkX = this.wallDir > 0 ? this.x + this.w + 2 : this.x - 2;
-      const checkY = this.y + this.h / 2;
-      const wallMat = Level.getMaterialAt(checkX, checkY);
-      if (wallMat === 'sponge') {
-        this.grabbing = true;
-        this.grabDir = this.wallDir;
-        this.facing = -this.wallDir;
-        this.vx = 0;
-        this.vy = 0;
-        Audio.grab();
-        this.setAnim('grab');
-        this.updateAnim(dt);
-        this.checkHazards();
-        return;
-      }
-    }
-
-    // ── Horizontal movement ──
-    // Apply material-based friction
-    const matFriction = this.grounded ? (Level.materials[this.groundMaterial] || Level.materials.solid).friction : 1.0;
-    const accel = (this.grounded ? this.groundAccel : this.airAccel) * matFriction;
-    const friction = (this.grounded ? this.groundFriction : this.airFriction) * (this.groundMaterial === 'ice' ? 0.15 : 1.0);
-
-    if (moveDir !== 0) {
-      this.vx += moveDir * accel * dt;
-      if (Math.abs(this.vx) > this.maxRunSpeed) {
-        this.vx = Math.sign(this.vx) * this.maxRunSpeed;
       }
     } else {
-      this.vx -= this.vx * friction * dt;
-      if (Math.abs(this.vx) < 5) this.vx = 0;
+      // Cruise: hold full speed in the committed direction.
+      this.vx = approach(this.vx, this.travelDir * this.runSpeed, this.accelRate * dt);
     }
 
-    // ── Asymmetric gravity ──
-    // Lighter on the way up (floaty arc), heavier on the way down (snappy)
-    const grav = (this.vy > 0 || !jumpHeldNow) ? this.gravityDown : this.gravityUp;
+    // Treadmill: cap and damp speed toward 0.5, non-directional (only slows).
+    if (onTreadmill && Math.abs(this.vx) > this.treadmillCap) {
+      this.vx = approach(this.vx, Math.sign(this.vx) * this.treadmillCap, this.treadmillDamp * dt);
+    }
+
+    // ── Asymmetric gravity (floaty rise, snappy fall) ──
+    const grav = this.vy < 0 ? this.gravityUp : this.gravityDown;
     this.vy += grav * dt;
     if (this.vy > this.maxFallSpeed) this.vy = this.maxFallSpeed;
-
-    // ── Wall slide ──
-    if (this.wallDir !== 0 && !this.grounded && this.vy > 0) {
-      if (this.vy > this.wallSlideSpeed) {
-        this.vy = this.wallSlideSpeed;
-      }
-    }
 
     // ── Coyote time (only when walking off, not jumping off) ──
     if (this.grounded) {
@@ -361,42 +282,9 @@ const Player = {
       this.coyoteTimer -= dt;
     }
 
-    // ── Jump ──
-    if (jumpBuffered) {
-      if (this.coyoteTimer > 0 && !this.grounded && this.wasGrounded) {
-        // Coyote jump (walked off ledge)
-        this._doGroundJump();
-      } else if (this.grounded) {
-        // Normal ground jump
-        this._doGroundJump();
-      } else if (this.wallDir !== 0) {
-        // Wall jump
-        this.vx = -this.wallDir * this.wallJumpForce.x;
-        this.vy = this.wallJumpForce.y;
-        this.facing = -this.wallDir;
-        this.jumpHeld = true;
-        this.squash = 1.3;
-        this.setAnim('jump');
-        Audio.wallJump();
-        Input.consumeBuffer('Space');
-        Input.consumeBuffer('ArrowUp');
-        Input.consumeBuffer('KeyW');
-        for (let i = 0; i < 5; i++) {
-          Particles.emit(
-            this.x + (this.wallDir > 0 ? this.w : 0), this.y + Math.random() * this.h,
-            -this.wallDir * (50 + Math.random() * 100), (Math.random() - 0.5) * 60,
-            'rgba(255,255,255,0.4)', 0.15 + Math.random() * 0.1
-          );
-        }
-      }
-    }
-
-    // ── Variable jump height: release to cut short ──
-    if (this.jumpHeld && !jumpHeldNow && this.vy < 0) {
-      this.vy *= this.jumpCutMultiplier;
-      this.jumpHeld = false;
-    } else if (jumpHeldNow && this.vy < 0) {
-      this.jumpHeld = true;
+    // ── Jump (fixed height: ground or coyote) ──
+    if (jumpBuffered && (this.grounded || (this.coyoteTimer > 0 && this.wasGrounded))) {
+      this._doGroundJump();
     }
 
     // ── Apply velocity ──
@@ -411,20 +299,9 @@ const Player = {
     this.checkHazards();
 
     // ── Update animation state ──
-    if (this.grabbing) {
-      this.setAnim('grab');
-    } else if (this.dashing) {
-      this.setAnim('dash');
-    } else if (this.grounded) {
-      if (!this.wasGrounded) {
-        this.setAnim('land');
-      } else if (Math.abs(this.vx) > 30) {
-        this.setAnim('run');
-      } else {
-        if (this.animState !== 'land') this.setAnim('idle');
-      }
-    } else if (this.wallDir !== 0 && this.vy > 0) {
-      this.setAnim('wallSlide');
+    if (this.grounded) {
+      if (!this.wasGrounded) this.setAnim('land');
+      else this.setAnim('run');            // Bozo is always rolling on the ground
     } else if (this.vy < 0) {
       if (this.animState !== 'jump') this.setAnim('jump');
     } else {
@@ -433,83 +310,73 @@ const Player = {
     this.updateAnim(dt);
 
     // ── Squash & stretch ──
-    if (this.grabbing) this.squashTarget = 0.8; // compressed while clinging
     this.squash += (this.squashTarget - this.squash) * 14 * dt;
     if (Math.abs(this.squash - this.squashTarget) < 0.01) this.squash = this.squashTarget;
     this.squashTarget = 1;
 
-    // ── Movement trail + afterimage ──
-    if (this.dashing) {
-      // Dash afterimage (ghosting)
-      this.trail.push({ x: this.x, y: this.y, w: this.w, h: this.h, alpha: 0.5, type: 'ghost' });
-    } else if (Math.abs(this.vx) > 100 || Math.abs(this.vy) > 100) {
+    // ── Movement trail (speed dots) ──
+    if (Math.abs(this.vx) > 100 || Math.abs(this.vy) > 100) {
       this.trail.push({ x: this.x + this.w / 2, y: this.y + this.h / 2, alpha: 0.3, type: 'dot' });
     }
     for (let i = this.trail.length - 1; i >= 0; i--) {
-      this.trail[i].alpha -= dt * (this.trail[i].type === 'ghost' ? 4 : 2);
+      this.trail[i].alpha -= dt * 2;
       if (this.trail[i].alpha <= 0) this.trail.splice(i, 1);
     }
 
-    // ── Run dust ──
+    // ── Run dust (kicked out behind the wheel) ──
     if (this.grounded && Math.abs(this.vx) > 150) {
+      const dir = Math.sign(this.vx) || 1;
       this._dustTimer = (this._dustTimer || 0) + dt;
       if (this._dustTimer > 0.06) {
         this._dustTimer = 0;
         Particles.emit(
-          this.x + (this.facing < 0 ? this.w : 0), this.y + this.h,
-          -this.facing * (20 + Math.random() * 40), -(10 + Math.random() * 30),
-          'rgba(200,190,170,0.3)', 0.15 + Math.random() * 0.1
+          this.x + (dir < 0 ? this.w : 0), this.y + this.h,
+          -dir * (20 + Math.random() * 40), -(10 + Math.random() * 30),
+          Tokens.rgba(Tokens.color.dust, 0.3), 0.15 + Math.random() * 0.1
         );
       }
     }
 
-    // ── Wall-slide sparks ──
-    if (this.wallDir !== 0 && !this.grounded && this.vy > 0) {
-      this._sparkTimer = (this._sparkTimer || 0) + dt;
-      if (this._sparkTimer > 0.04) {
-        this._sparkTimer = 0;
-        const wx = this.wallDir > 0 ? this.x + this.w : this.x;
-        Particles.emit(
-          wx, this.y + Math.random() * this.h,
-          -this.wallDir * (30 + Math.random() * 50), -(20 + Math.random() * 60),
-          'rgba(255,220,120,0.5)', 0.1 + Math.random() * 0.08
-        );
-      }
-    }
-
-    // ── Ice sliding crystals ──
-    if (this.grounded && this.groundMaterial === 'ice' && Math.abs(this.vx) > 50) {
+    // ── Treadmill belt dust ──
+    if (onTreadmill && Math.abs(this.vx) > 30) {
       this._iceTimer = (this._iceTimer || 0) + dt;
       if (this._iceTimer > 0.05) {
         this._iceTimer = 0;
         Particles.emit(
           this.x + Math.random() * this.w, this.y + this.h,
           (Math.random() - 0.5) * 40, -(15 + Math.random() * 25),
-          'rgba(150,200,255,0.4)', 0.15 + Math.random() * 0.1
+          Tokens.rgba(Tokens.color.belt, 0.35), 0.15 + Math.random() * 0.1
         );
       }
     }
-
-    // Reset dash on ground
-    if (this.grounded) this.canDash = true;
   },
 
   _doGroundJump() {
     this.vy = this.jumpForce;
     this.coyoteTimer = 0;
     this.grounded = false;
-    this.jumpHeld = true;
     this.squash = 1.4;
     this.setAnim('jump');
     Audio.jump();
-    Input.consumeBuffer('Space');
-    Input.consumeBuffer('ArrowUp');
-    Input.consumeBuffer('KeyW');
+    Input.consumeJump();
     for (let i = 0; i < 5; i++) {
       Particles.emit(
         this.x + Math.random() * this.w, this.y + this.h,
         (Math.random() - 0.5) * 80, 40 + Math.random() * 40,
-        'rgba(255,255,255,0.4)', 0.15 + Math.random() * 0.1
+        Tokens.rgba(Tokens.color.white, 0.4), 0.15 + Math.random() * 0.1
+      );
+    }
+  },
+
+  // Dust + a little kick when the wheel lunges out to brake (the attack motion).
+  _spawnBrakeDust() {
+    const dir = this.attackDir || this.travelDir || 1;
+    Camera.shake(2);
+    for (let i = 0; i < 6; i++) {
+      Particles.emit(
+        this.x + (dir > 0 ? this.w : 0), this.y + this.h * (0.5 + Math.random() * 0.5),
+        dir * (60 + Math.random() * 120), -(10 + Math.random() * 40),
+        'rgba(220,220,235,0.5)', 0.15 + Math.random() * 0.1
       );
     }
   },
@@ -559,33 +426,8 @@ const Player = {
         this.y += pushDir * overlapY;
 
         if (pushDir === -1) {
-          // Check material for bounce/breakable
-          const tileMat = tile.material || 'solid';
-          const matDef = Level.materials[tileMat];
-
-          // Bouncy tile: reflect velocity
-          if (matDef && matDef.bounce > 0 && this.vy > 50) {
-            this.vy = -this.vy * matDef.bounce;
-            this.squash = 1.5;
-            this.grounded = false;
-            Audio.bounce();
-            for (let i = 0; i < 6; i++) {
-              Particles.emit(
-                this.x + Math.random() * this.w, this.y + this.h,
-                (Math.random() - 0.5) * 100, -(60 + Math.random() * 80),
-                'rgba(80,200,100,0.5)', 0.2 + Math.random() * 0.15
-              );
-            }
-            continue; // Don't ground — player bounces
-          }
-
-          // Breakable tile: start crumbling on contact
-          if (matDef && matDef.breakable) {
-            Level.startBreaking(tile);
-          }
-
-          // Track ground material
-          this.groundMaterial = tileMat;
+          // Track ground material (drives the treadmill speed cap)
+          this.groundMaterial = tile.material || 'solid';
 
           // Landed
           if (this.vy > 200) {
@@ -595,7 +437,7 @@ const Player = {
               Particles.emit(
                 this.x + Math.random() * this.w, this.y + this.h,
                 (Math.random() - 0.5) * 120, -(20 + Math.random() * 40),
-                'rgba(255,255,255,0.3)', 0.2 + Math.random() * 0.1
+                Tokens.rgba(Tokens.color.white, 0.3), 0.2 + Math.random() * 0.1
               );
             }
           }
@@ -690,22 +532,56 @@ const Player = {
     }
   },
 
+  // The wheel-throw hitbox: a short lunge in the OLD travel direction, live
+  // only during the braking phase of a reversal. This IS the attack.
+  getAttackRect() {
+    if (this.runState !== 'brake' || this.brakeTimer <= 0 || this.attackDir === 0) return null;
+    const reach = 18;
+    const hh = this.h * 0.7;
+    const y = this.y + this.h - hh;        // lower body — where the wheel is
+    const half = this.w / 2;
+    // Spans from Bozo's center outward past the leading edge by `reach`.
+    const x = this.attackDir > 0 ? this.x + half : this.x + half - (half + reach);
+    return { x, y, w: half + reach, h: hh };
+  },
+
   checkHazards() {
     if (this.dead || this.respawning) return;
-    // Combine static tile hazards + entity hazards
-    const hazards = Level.getHazards().concat(Entities.getHazardRects());
-    // Use a smaller hitbox for hazard checks (more forgiving)
-    const hx = this.x + this.hazardShrink;
-    const hy = this.y + this.hazardShrink;
-    const hw = this.w - this.hazardShrink * 2;
-    const hh = this.h - this.hazardShrink * 2;
 
-    for (const haz of hazards) {
-      if (hx + hw > haz.x && hx < haz.x + haz.w &&
-          hy + hh > haz.y && hy < haz.y + haz.h) {
-        this.die();
-        return;
+    const attack = this.getAttackRect();
+    const px = this.x + this.hazardShrink;
+    const py = this.y + this.hazardShrink;
+    const pw = this.w - this.hazardShrink * 2;
+    const ph = this.h - this.hazardShrink * 2;
+    const body = { x: px, y: py, w: pw, h: ph };
+
+    // Enemies: killable by wheel-throw or stomp; lethal on any other contact.
+    // Iterate backwards so kills (which splice the list) are safe.
+    for (let i = Entities.list.length - 1; i >= 0; i--) {
+      const e = Entities.list[i];
+      if (!e.getHazardRect || e.dead) continue;
+      const r = e.getHazardRect();
+
+      // (a) Wheel-throw lunge connects.
+      if (attack && aabb(attack, r)) { Entities.kill(e); continue; }
+
+      // (b) Stomp from above (feet crossing the enemy's top while falling).
+      const feet = this.y + this.h;
+      const overlapH = (px + pw) > r.x && px < (r.x + r.w);
+      if (this.vy >= 0 && overlapH && feet >= r.y - 6 && feet <= r.y + r.h * 0.6) {
+        Entities.kill(e);
+        this.vy = -260;          // bounce off
+        this.squash = 1.3;
+        continue;
       }
+
+      // (c) Otherwise the enemy is lethal.
+      if (aabb(body, r)) { this.die(); return; }
+    }
+
+    // Static tile hazards (none on a lean track, but kept for safety/future).
+    for (const haz of Level.getHazards()) {
+      if (aabb(body, haz)) { this.die(); return; }
     }
   },
 
@@ -716,10 +592,10 @@ const Player = {
     // Trail + afterimages
     for (const t of this.trail) {
       if (t.type === 'ghost') {
-        ctx.fillStyle = `rgba(180, 200, 255, ${t.alpha * 0.25})`;
+        ctx.fillStyle = Tokens.rgba(Tokens.color.trailGhost, t.alpha * 0.25);
         ctx.fillRect(t.x, t.y, t.w, t.h);
       } else {
-        ctx.fillStyle = `rgba(200, 220, 255, ${t.alpha * 0.3})`;
+        ctx.fillStyle = Tokens.rgba(Tokens.color.trailDot, t.alpha * 0.3);
         ctx.fillRect(t.x - 3, t.y - 3, 6, 6);
       }
     }
@@ -768,20 +644,20 @@ const Player = {
 
   _drawRectFallback(ctx) {
     // Body
-    ctx.fillStyle = '#e8e8f0';
+    ctx.fillStyle = Tokens.color.playerBody;
     ctx.fillRect(this.x, this.y, this.w, this.h);
 
     // Eyes (positioned relative to hitbox)
     const eyeY = this.y + this.h * 0.25;
     const midX = this.x + this.w / 2;
-    ctx.fillStyle = '#1a1a2e';
+    ctx.fillStyle = Tokens.color.playerEye;
     ctx.fillRect(midX - 4, eyeY, 3, 4);
     ctx.fillRect(midX + 1, eyeY, 3, 4);
 
     // Speed lines when moving fast
     if (Math.abs(this.vx) > 200) {
       const alpha = Math.min(0.5, (Math.abs(this.vx) - 200) / 300);
-      ctx.fillStyle = `rgba(200, 220, 255, ${alpha})`;
+      ctx.fillStyle = Tokens.rgba(Tokens.color.trailDot, alpha);
       for (let i = 0; i < 3; i++) {
         const ly = this.y + 4 + i * 10;
         ctx.fillRect(this.x - this.facing * (4 + i * 3), ly, 6, 1);
