@@ -44,6 +44,9 @@ const Tokens = {
     playerEye:  '#1a1a2e',
     trailGhost: [180, 200, 255],
     trailDot:   [200, 220, 255],
+    wheel:      '#2a2230',      // unicycle tyre
+    frame:      '#c0a050',      // brass frame / rim / spokes (echoes the gold family)
+    clownNose:  '#e65a46',      // small clown-nose accent
 
     // ── World / materials ──
     white:     [255, 255, 255],

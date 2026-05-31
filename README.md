@@ -9,7 +9,7 @@ Play it live at [clowncity.russelldangerr.com](https://clowncity.russelldangerr.
 
 ## Status
 
-v0.2.0 — unicycle auto-runner rework (mobile-playable).
+v0.2.1 — smoother rolling + a leaning unicycle (mobile-playable).
 
 ## Play
 

@@ -56,6 +56,18 @@ const Player = {
   // ── Ledge assist ──
   ledgeAssist: 2,         // extra pixels for ground check width
 
+  // ── Collision: don't treat flat-floor seams as walls ──
+  // X-collision only blocks if a tile rises into the body by more than this.
+  // Must be > max per-frame fall penetration (maxFallSpeed/120 = 6px) and < a
+  // real step, so flat ground never snags momentum but real walls still stop us.
+  stepTolerance: 8,
+
+  // ── Unicycle visual (roll + momentum sway) ──
+  wheelRadius: 8,
+  cruiseLean: 0.10,       // rad — gentle lean into travel at full speed (~6°)
+  brakeLean: 0.14,        // rad — extra back-sway during a reversal (~8°)
+  leanRate: 10,           // lean smoothing rate (squash uses 14; lean trails a touch)
+
   // ── State ──
   grounded: false,
   wasGrounded: false,     // for coyote: only grant when walking off, not jumping off
@@ -78,6 +90,11 @@ const Player = {
   animState: 'idle',
   animTimer: 0,
   animFrame: 0,
+
+  // ── Unicycle sway / roll (visual only) ──
+  wheelAngle: 0,
+  lean: 0,
+  leanTarget: 0,
 
   // Animation definitions: { frames: [indices], duration: ms per frame, loop: bool, next: state }
   anims: {
@@ -132,6 +149,9 @@ const Player = {
     this.pausedAtZero = 0;
     this.attackDir = 0;
     this.facing = 1;
+    this.wheelAngle = 0;
+    this.lean = 0;
+    this.leanTarget = 0;
     this.dead = false;
     this.deathTimer = 0;
     this.respawning = true;
@@ -314,6 +334,20 @@ const Player = {
     if (Math.abs(this.squash - this.squashTarget) < 0.01) this.squash = this.squashTarget;
     this.squashTarget = 1;
 
+    // ── Unicycle roll + momentum sway ──
+    // Wheel rolls by arc length (clockwise-positive canvas rotation, so vx>0 spins +).
+    this.wheelAngle += (this.vx / this.wheelRadius) * dt;
+    // Lean into travel; during a reversal the body rocks back as the wheel kicks
+    // out the OLD way (attackDir). The smoothing is what reads as a sway.
+    const speedFrac = Math.max(-1, Math.min(1, this.vx / this.runSpeed));
+    let leanT = speedFrac * this.cruiseLean;
+    if (this.runState === 'brake' && this.attackDir !== 0) {
+      leanT += -this.attackDir * this.brakeLean;
+    }
+    if (!this.grounded) leanT *= 0.5;   // softer in the air
+    this.leanTarget = leanT;
+    this.lean += (this.leanTarget - this.lean) * this.leanRate * dt;
+
     // ── Movement trail (speed dots) ──
     if (Math.abs(this.vx) > 100 || Math.abs(this.vy) > 100) {
       this.trail.push({ x: this.x + this.w / 2, y: this.y + this.h / 2, alpha: 0.3, type: 'dot' });
@@ -394,8 +428,12 @@ const Player = {
       const overlapY = Math.min(this.y + this.h, tile.y + tile.h) - Math.max(this.y, tile.y);
       if (overlapX <= 0 || overlapY <= 0) continue;
 
-      // Only resolve if this is primarily a horizontal collision
-      if (overlapX < overlapY) {
+      // Only resolve as a wall if the tile rises into the body by more than
+      // stepTolerance. On flat ground the next tile's top is level with the
+      // floor we rest on, so gravity penetration alone (<6px) must NOT count as
+      // a wall — otherwise momentum snags at every tile seam. Real walls (and
+      // the full-height level edges) overlap the body far more, so still block.
+      if (overlapX < overlapY && overlapY > this.stepTolerance) {
         const pushDir = (this.x + this.w / 2) < (tile.x + tile.w / 2) ? -1 : 1;
         this.x += pushDir * overlapX;
         this.vx = 0;
@@ -509,7 +547,7 @@ const Player = {
         } else {
           this.vy = 0;
         }
-      } else {
+      } else if (overlapX < overlapY && overlapY > this.stepTolerance) {
         const pushDir = (this.x + this.w / 2) < (rect.x + rect.w / 2) ? -1 : 1;
         this.x += pushDir * overlapX;
         this.vx = 0;
@@ -614,6 +652,7 @@ const Player = {
 
     ctx.save();
     ctx.translate(cx, bottomY);
+    ctx.rotate(this.lean); // momentum sway about the ground-contact point
     ctx.scale(this.facing, 1); // flip horizontally based on facing
     ctx.scale(stretchX, stretchY);
     ctx.translate(-cx, -bottomY);
@@ -643,24 +682,72 @@ const Player = {
   },
 
   _drawRectFallback(ctx) {
-    // Body
+    // Procedural unicycle (no sprite sheet). Drawn in the leaned/squashed frame
+    // set up by draw(), pivoting at the ground-contact point. Subtle & grounded:
+    // a small wheel, a short frame, Bozo perched just above. Hitbox is unchanged.
+    const footX = this.x + this.w / 2;     // ground contact (pivot x)
+    const footY = this.y + this.h;         // ground contact (pivot y)
+    const r = this.wheelRadius;            // 8
+    const hubY = footY - r;                // wheel centre
+
+    // Body box: compact, perched a couple px above the hitbox top.
+    const bw = 12, bh = 16;
+    const bodyX = footX - bw / 2;
+    const bodyBottom = hubY - 5;           // short frame gap above the wheel
+    const bodyTop = bodyBottom - bh;
+
+    // ── Frame / seat-post ──
+    ctx.fillStyle = Tokens.color.frame;
+    ctx.fillRect(footX - 1.5, bodyBottom, 3, hubY - bodyBottom);  // post
+    ctx.fillRect(footX - 4, bodyBottom - 1, 8, 2);                // saddle
+
+    // ── Wheel (spins with wheelAngle) ──
+    ctx.fillStyle = Tokens.color.wheel;
+    ctx.beginPath();
+    ctx.arc(footX, hubY, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = Tokens.color.frame;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(footX, hubY, r - 0.75, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+      const a = this.wheelAngle + i * (Math.PI / 2);
+      ctx.beginPath();
+      ctx.moveTo(footX, hubY);
+      ctx.lineTo(footX + Math.cos(a) * (r - 1), hubY + Math.sin(a) * (r - 1));
+      ctx.stroke();
+    }
+    ctx.fillStyle = Tokens.color.frame;
+    ctx.beginPath();
+    ctx.arc(footX, hubY, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ── Body ──
     ctx.fillStyle = Tokens.color.playerBody;
-    ctx.fillRect(this.x, this.y, this.w, this.h);
+    ctx.fillRect(bodyX, bodyTop, bw, bh);
 
-    // Eyes (positioned relative to hitbox)
-    const eyeY = this.y + this.h * 0.25;
-    const midX = this.x + this.w / 2;
+    // Eyes
+    const eyeY = bodyTop + bh * 0.3;
     ctx.fillStyle = Tokens.color.playerEye;
-    ctx.fillRect(midX - 4, eyeY, 3, 4);
-    ctx.fillRect(midX + 1, eyeY, 3, 4);
+    ctx.fillRect(footX - 4, eyeY, 3, 4);
+    ctx.fillRect(footX + 1, eyeY, 3, 4);
 
-    // Speed lines when moving fast
+    // Clown nose (subtle accent)
+    ctx.fillStyle = Tokens.color.clownNose;
+    ctx.beginPath();
+    ctx.arc(footX, bodyTop + bh * 0.58, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Speed lines when moving fast (anchored to the torso; tilt with the lean)
     if (Math.abs(this.vx) > 200) {
       const alpha = Math.min(0.5, (Math.abs(this.vx) - 200) / 300);
+      const dir = Math.sign(this.vx) || 1;
       ctx.fillStyle = Tokens.rgba(Tokens.color.trailDot, alpha);
       for (let i = 0; i < 3; i++) {
-        const ly = this.y + 4 + i * 10;
-        ctx.fillRect(this.x - this.facing * (4 + i * 3), ly, 6, 1);
+        const ly = bodyTop + 3 + i * 5;
+        ctx.fillRect(footX - dir * (bw / 2 + 4 + i * 3), ly, 6, 1);
       }
     }
   },
