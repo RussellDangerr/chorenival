@@ -12,7 +12,7 @@ const Engine = {
   hitstopTimer: 0,         // freeze frames for impact feel
   flashAlpha: 0,           // screen flash overlay
   flashColor: 'white',
-  flashDecay: 6,
+  flashDecay: Tokens.motion.flashDecay,
   systems: [],             // objects with update(dt) and/or draw(ctx)
 
   init() {
@@ -73,8 +73,8 @@ const Engine = {
     // Screen flash overlay
     if (this.flashAlpha > 0.01) {
       this.ctx.fillStyle = this.flashColor === 'white'
-        ? `rgba(255,255,255,${this.flashAlpha})`
-        : `rgba(255,60,60,${this.flashAlpha})`;
+        ? Tokens.rgba(Tokens.color.white, this.flashAlpha)
+        : Tokens.rgba(Tokens.color.flashRed, this.flashAlpha);
       this.ctx.fillRect(0, 0, this.width, this.height);
       this.flashAlpha -= this.flashDecay * frameTime;
       if (this.flashAlpha < 0) this.flashAlpha = 0;

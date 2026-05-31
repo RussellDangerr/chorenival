@@ -16,10 +16,12 @@ const Audio = {
       } else if (this.ctx.state === 'running') {
         window.removeEventListener('keydown', resume);
         window.removeEventListener('click', resume);
+        window.removeEventListener('touchend', resume);
       }
     };
     window.addEventListener('keydown', resume);
     window.addEventListener('click', resume);
+    window.addEventListener('touchend', resume);
   },
 
   // Play a procedurally generated tone

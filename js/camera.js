@@ -6,14 +6,17 @@ const Camera = {
   lookaheadX: 60,
   lookaheadY: 30,
   shakeAmount: 0,
-  shakeDecay: 8,
+  shakeDecay: Tokens.motion.shakeDecay,
 
   update(dt) {
     // Target: player center with lookahead based on velocity
     const px = Player.x + Player.w / 2;
     const py = Player.y + Player.h / 2;
 
-    const lookX = Player.facing * this.lookaheadX;
+    // Lead the direction Bozo is actually travelling (facing is frozen in the
+    // unicycle rework), falling back to committed travelDir during the brake pause.
+    const travelDir = Math.sign(Player.vx) || Player.travelDir || 1;
+    const lookX = travelDir * this.lookaheadX;
     const lookY = (Player.vy > 0 ? 1 : Player.vy < 0 ? -0.5 : 0) * this.lookaheadY;
 
     this.targetX = px + lookX - Engine.width / 2;
@@ -51,7 +54,8 @@ const Camera = {
   snapToPlayer() {
     const px = Player.x + Player.w / 2;
     const py = Player.y + Player.h / 2;
-    const tx = Math.max(0, Math.min(px + Player.facing * this.lookaheadX - Engine.width / 2, Level.levelWidth - Engine.width));
+    const travelDir = Player.travelDir || 1;
+    const tx = Math.max(0, Math.min(px + travelDir * this.lookaheadX - Engine.width / 2, Level.levelWidth - Engine.width));
     const ty = Math.max(0, Math.min(py - Engine.height / 2, Level.levelHeight - Engine.height));
     this.snapTo(tx, ty);
   }

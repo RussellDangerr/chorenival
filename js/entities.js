@@ -13,8 +13,6 @@ const Entities = {
     for (const def of entityDefs) {
       if (def.type === 'platform') {
         this.list.push(new MovingPlatform(def));
-      } else if (def.type === 'sawblade') {
-        this.list.push(new Sawblade(def));
       } else if (def.type === 'patrol') {
         this.list.push(new PatrolEnemy(def));
       } else if (def.type === 'oneway') {
@@ -43,7 +41,7 @@ const Entities = {
     return rects;
   },
 
-  // Get all hazard rects (sawblades, enemies)
+  // Get all hazard rects (enemies)
   getHazardRects() {
     const rects = [];
     for (const e of this.list) {
@@ -59,6 +57,21 @@ const Entities = {
       if (e instanceof OneWayPlatform) rects.push(e.getSolidRect());
     }
     return rects;
+  },
+
+  // Kill an enemy (stomp or wheel-throw). Bursts juice and removes it.
+  kill(e) {
+    if (e.dead) return;
+    e.dead = true;
+    const cx = e.x + (e.w || 0) / 2;
+    const cy = e.y + (e.h || 0) / 2;
+    Particles.burst(cx, cy, 14, 160, Tokens.rgba(Tokens.color.kill, 0.85), 0.35);
+    Particles.burst(cx, cy, 6, 90, Tokens.rgba(Tokens.color.white, 0.6), 0.25);
+    Camera.shake(4);
+    Engine.hitstop(0.04);
+    Audio.bounce();
+    const i = this.list.indexOf(e);
+    if (i >= 0) this.list.splice(i, 1);
   }
 };
 
@@ -122,7 +135,7 @@ class MovingPlatform {
     ctx.fillStyle = theme.tile[2];
     ctx.fillRect(this.x + 1, this.y, this.w - 2, 2);
     // Subtle edge dots to show it moves
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillStyle = Tokens.rgba(Tokens.color.white, 0.15);
     ctx.fillRect(this.x + 4, this.y + this.h / 2 - 1, 2, 2);
     ctx.fillRect(this.x + this.w - 6, this.y + this.h / 2 - 1, 2, 2);
   }
@@ -155,81 +168,15 @@ class OneWayPlatform {
       ctx.fillRect(this.x + dx, this.y, 5, 3);
     }
     // Faint line underneath
-    ctx.fillStyle = `rgba(255,255,255,0.06)`;
+    ctx.fillStyle = Tokens.rgba(Tokens.color.white, 0.06);
     ctx.fillRect(this.x, this.y + 3, this.w, 1);
   }
 }
 
 // ═══════════════════════════════════════════
-// SAWBLADE
-// Moves along a path. Kills on contact.
-// ═══════════════════════════════════════════
-class Sawblade {
-  constructor({ x, y, toX, toY, speed, radius }) {
-    this.startX = x; this.startY = y;
-    this.endX = toX ?? x; this.endY = toY ?? y;
-    this.speed = speed || 80;
-    this.radius = radius || 12;
-    this.x = x; this.y = y;
-    this.t = 0;
-    this.dir = 1;
-    this.angle = 0;
-  }
-
-  update(dt) {
-    const dx = this.endX - this.startX;
-    const dy = this.endY - this.startY;
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-    const step = (this.speed / dist) * dt;
-
-    this.t += this.dir * step;
-    if (this.t >= 1) { this.t = 1; this.dir = -1; }
-    else if (this.t <= 0) { this.t = 0; this.dir = 1; }
-
-    this.x = this.startX + dx * this.t;
-    this.y = this.startY + dy * this.t;
-    this.angle += dt * 8; // spin
-  }
-
-  getHazardRect() {
-    const r = this.radius - 2; // slightly forgiving
-    return { x: this.x - r, y: this.y - r, w: r * 2, h: r * 2 };
-  }
-
-  draw(ctx) {
-    const r = this.radius;
-    ctx.save();
-    ctx.translate(this.x, this.y);
-    ctx.rotate(this.angle);
-
-    // Blade body
-    ctx.fillStyle = '#aa3333';
-    ctx.beginPath();
-    const teeth = 8;
-    for (let i = 0; i < teeth; i++) {
-      const a1 = (i / teeth) * Math.PI * 2;
-      const a2 = ((i + 0.5) / teeth) * Math.PI * 2;
-      const outerR = r;
-      const innerR = r * 0.65;
-      ctx.lineTo(Math.cos(a1) * outerR, Math.sin(a1) * outerR);
-      ctx.lineTo(Math.cos(a2) * innerR, Math.sin(a2) * innerR);
-    }
-    ctx.closePath();
-    ctx.fill();
-
-    // Center
-    ctx.fillStyle = '#661a1a';
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.25, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
-  }
-}
-
-// ═══════════════════════════════════════════
 // PATROL ENEMY
-// Walks back and forth on platforms. Kills on contact.
+// Walks back and forth on platforms. Lethal on side contact;
+// killed by a stomp from above or a unicycle wheel-throw.
 // ═══════════════════════════════════════════
 class PatrolEnemy {
   constructor({ x, y, range, speed }) {
@@ -240,6 +187,7 @@ class PatrolEnemy {
     this.speed = speed || 50;
     this.dir = 1;
     this.animTimer = 0;
+    this.dead = false;
   }
 
   update(dt) {
@@ -263,17 +211,17 @@ class PatrolEnemy {
 
   draw(ctx) {
     // Body
-    ctx.fillStyle = '#cc4444';
+    ctx.fillStyle = Tokens.color.enemy;
     ctx.fillRect(this.x, this.y, this.w, this.h);
     // Lighter middle
-    ctx.fillStyle = '#dd6666';
+    ctx.fillStyle = Tokens.color.enemyLight;
     ctx.fillRect(this.x + 2, this.y + 2, this.w - 4, this.h - 4);
 
     // Googly eyes (LBP-inspired!)
     const eyeX = this.dir > 0 ? this.x + this.w * 0.6 : this.x + this.w * 0.2;
     const eyeX2 = this.dir > 0 ? this.x + this.w * 0.35 : this.x + this.w * 0.45;
     // White
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = Tokens.color.eyeWhite;
     ctx.beginPath();
     ctx.arc(eyeX, this.y + 7, 4, 0, Math.PI * 2);
     ctx.fill();
@@ -282,7 +230,7 @@ class PatrolEnemy {
     ctx.fill();
     // Pupils (jiggle slightly)
     const jiggle = Math.sin(this.animTimer * 6) * 1;
-    ctx.fillStyle = '#111';
+    ctx.fillStyle = Tokens.color.eyePupil;
     ctx.beginPath();
     ctx.arc(eyeX + this.dir * 1.5, this.y + 7 + jiggle, 2, 0, Math.PI * 2);
     ctx.fill();
@@ -292,7 +240,7 @@ class PatrolEnemy {
 
     // Little legs animation
     const legOffset = Math.sin(this.animTimer * 10) * 2;
-    ctx.fillStyle = '#aa3333';
+    ctx.fillStyle = Tokens.color.enemyDark;
     ctx.fillRect(this.x + 3, this.y + this.h, 3, 4 + legOffset);
     ctx.fillRect(this.x + this.w - 6, this.y + this.h, 3, 4 - legOffset);
   }
