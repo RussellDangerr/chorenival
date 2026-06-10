@@ -4,6 +4,31 @@ A browser game: **Bozo the Clown on a unicycle**, a bidirectional auto-runner
 (as of v0.2.0). Vanilla JS, **no build step, no dependencies**. Open `index.html`
 in a browser to run; deployed live at clowncity.russelldangerr.com (main → Cloudflare).
 
+## Design ideology
+The cartoon creed for this project — *everything is possible, nothing has to make
+sense, have fun with it* — but distilled from how the best pilots and longest-lived
+cartoons actually cohere. Full reasoning + sources in
+[`docs/tv-pilots-research.md`](docs/tv-pilots-research.md); the working principles:
+- **Build the engine, not the episode.** The bidirectional unicycle is a *story
+  engine* — a renewable source of "problematic situations." Judge features by *does
+  the core loop generate this, or am I hand-feeding novelty?*
+- **Constraint generates the whimsy.** Like Chuck Jones' Road Runner rules, a few
+  iron, arbitrary rules (facing is frozen; reversing is the attack; side/pit contact
+  is fatal) are what make it fun. Resist powers that break them.
+- **The "plausible impossible."** Anything can happen *if* it has weight, reaction,
+  and consequence (Disney: "believable, doesn't mean real"). The velocity-driven
+  unicycle sway already lives this — fake physics, but consistent and felt.
+- **Commit to one distortion.** Pick the visual/feel language and honor it everywhere
+  (that's what `Tokens` + `Level.themes` enforce).
+- **Stable cores age well.** Guard against Flanderization — don't let Bozo's one
+  funniest trait, or one mechanic, metastasize into the whole game.
+- **Open with the product, not the lore.** First level = a proof-of-concept of the
+  best core loop in ten seconds, not an origin story.
+- **Prefer finite & complete to sprawling.** Plan the ending (cf. *Gravity Falls*):
+  "you can only write 'weird' for so long before it stops being fun."
+- **Respect scarcity.** No build step, no dependencies, vanilla JS — the constraint
+  is a feature; it forces the sharp decisions that make a thing feel complete.
+
 ## Architecture
 - Singleton-object modules (not ES modules/classes for the core), loaded via
   `<script>` tags in `index.html`. **Load order matters**: `tokens.js` first,
