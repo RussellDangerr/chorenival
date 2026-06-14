@@ -4,8 +4,8 @@
     {
       "name": "clowncity",
       "runtimeExecutable": "py",
-      "runtimeArgs": ["-m", "http.server", "8080"],
-      "port": 8080
+      "runtimeArgs": ["-c", "import http.server,socketserver\nclass H(http.server.SimpleHTTPRequestHandler):\n  def do_GET(self):\n    self._strip(); super().do_GET()\n  def do_HEAD(self):\n    self._strip(); super().do_HEAD()\n  def _strip(self):\n    for h in ('If-Modified-Since','If-None-Match'):\n      if h in self.headers: del self.headers[h]\n  def end_headers(self):\n    self.send_header('Cache-Control','no-store, max-age=0')\n    super().end_headers()\nhttp.server.ThreadingHTTPServer(('',8081),H).serve_forever()"],
+      "port": 8081
     }
   ]
 }

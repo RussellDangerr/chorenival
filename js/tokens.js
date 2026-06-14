@@ -46,7 +46,10 @@ const Tokens = {
     trailDot:   [200, 220, 255],
     wheel:      '#2a2230',      // unicycle tyre
     frame:      '#c0a050',      // brass frame / rim / spokes (echoes the gold family)
-    clownNose:  '#e65a46',      // small clown-nose accent
+    clownNose:  '#e23b30',      // clown-nose accent (clear carnival red)
+    partyHat:   '#3b82d6',      // carnival party hat (blue)
+    partyHatDot:'#ffe066',      // party-hat dots + pom-pom (warm gold)
+    carnival:   ['#e23b30', '#ffd764', '#3b82d6', '#4cc77a', '#e056b0'], // attack-spray hues (multicolour sand)
 
     // ── World / materials ──
     white:     [255, 255, 255],

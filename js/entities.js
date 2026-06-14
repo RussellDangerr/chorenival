@@ -27,7 +27,7 @@ const Entities = {
 
   draw(ctx) {
     ctx.save();
-    ctx.translate(-Camera.x, -Camera.y);
+    ctx.translate(-Camera.drawX, -Camera.drawY);
     for (const e of this.list) e.draw(ctx);
     ctx.restore();
   },

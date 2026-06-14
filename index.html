@@ -4,31 +4,217 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Clown City</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Ewert&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+
   <style>
+    :root {
+      --ink:        #f3e2b8;   /* warm cream-gold text */
+      --gold:       #e8c66a;
+      --gold-brt:   #ffd764;
+      --bulb:       #ffe9b0;   /* incandescent */
+      --black:      #0b0507;
+      --oxblood:    #1c080b;
+      --maroon:     #4a0e12;
+      --crimson:    #8b1a1a;
+      --carnival:   #e23b30;   /* the clown-nose red */
+      --velvet:     #5c0f17;
+      --velvet-dk:  #2c060a;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
+
     html, body {
-      background: #0a0a12;
+      height: 100vh;
+      overflow: hidden;
       display: flex;
       justify-content: center;
       align-items: center;
-      height: 100vh;
-      overflow: hidden;
-      /* Touch game: stop the browser from stealing swipes for scroll / back-gesture / zoom */
+      background:
+        radial-gradient(ellipse 120% 90% at 50% 38%, #220a12 0%, #140709 52%, var(--black) 100%);
+      color: var(--ink);
+      /* Touch game: stop the browser stealing swipes for scroll / back / zoom */
       touch-action: none;
-      -webkit-user-select: none;
-      user-select: none;
+      -webkit-user-select: none; user-select: none;
       -webkit-tap-highlight-color: transparent;
       overscroll-behavior: none;
+      font-family: 'Cinzel', serif;
     }
+
+    /* ── Atmosphere layer (behind the canvas; fills letterbox space) ── */
+    #bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+    /* faint big-top stripes radiating from above */
+    #bg::before {
+      content: ""; position: absolute; inset: -20%;
+      background: repeating-linear-gradient(
+        90deg,
+        rgba(139,26,26,0.045) 0 46px,
+        transparent 46px 92px);
+      transform: rotate(0.0001deg);
+      mask: radial-gradient(ellipse 80% 70% at 50% 30%, #000 30%, transparent 78%);
+      -webkit-mask: radial-gradient(ellipse 80% 70% at 50% 30%, #000 30%, transparent 78%);
+    }
+    /* vignette + film grain */
+    #bg::after {
+      content: ""; position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse 75% 75% at 50% 50%, transparent 52%, rgba(0,0,0,0.62) 100%),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+      background-blend-mode: multiply, overlay;
+      opacity: 0.9;
+    }
+    .confetti { position: absolute; inset: 0; }
+    .confetti i {
+      position: absolute; top: -6vh; width: 7px; height: 11px; opacity: 0.5;
+      border-radius: 1px;
+      animation: fall linear infinite;
+    }
+    @keyframes fall {
+      0%   { transform: translateY(-10vh) rotate(0deg); }
+      100% { transform: translateY(115vh) rotate(540deg); }
+    }
+
+    /* ── The game canvas, framed and lit ── */
     canvas {
-      display: block;
+      position: relative; z-index: 1; display: block;
       image-rendering: pixelated;
       touch-action: none;
+      border-radius: 3px;
+      box-shadow:
+        0 0 0 2px var(--gold),
+        0 0 0 7px var(--oxblood),
+        0 0 0 8px rgba(232,198,106,0.35),
+        0 0 90px -12px rgba(232,198,106,0.45),
+        0 36px 90px -24px #000;
+    }
+
+    /* ── Splash / front door ── */
+    #splash {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: center;
+      touch-action: none; cursor: pointer;
+    }
+    #splash.go { pointer-events: none; }
+
+    .curtain {
+      position: fixed; top: 0; bottom: 0; width: 53vw; z-index: 11;
+      background:
+        linear-gradient(90deg, rgba(0,0,0,0.55), transparent 18% 82%, rgba(0,0,0,0.55)),
+        repeating-linear-gradient(90deg,
+          var(--velvet-dk) 0 18px, var(--velvet) 18px 40px, #7a1620 40px 46px, var(--velvet) 46px 64px);
+      box-shadow: inset 0 0 120px rgba(0,0,0,0.6);
+      transition: transform 1.05s cubic-bezier(.7,.02,.3,1);
+      will-change: transform;
+    }
+    .curtain.l { left: 0; border-right: 3px solid var(--gold); }
+    .curtain.r { right: 0; border-left: 3px solid var(--gold); }
+    /* draped gold valance scallops along the top */
+    .curtain::after {
+      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 46px;
+      background: radial-gradient(circle at 24px -8px, var(--gold) 22px, transparent 23px) 0 0 / 48px 46px repeat-x;
+      filter: drop-shadow(0 3px 2px rgba(0,0,0,.5));
+    }
+    #splash.go .curtain.l { transform: translateX(-108%); }
+    #splash.go .curtain.r { transform: translateX(108%); }
+
+    .marquee {
+      position: relative; z-index: 12;
+      padding: 58px clamp(34px, 7vw, 92px);
+      text-align: center;
+      background:
+        radial-gradient(ellipse 90% 80% at 50% 40%, rgba(74,14,18,0.85), rgba(12,6,8,0.92));
+      border-radius: 8px;
+      box-shadow: 0 0 0 1px rgba(232,198,106,0.25), 0 40px 120px -30px #000;
+      transition: opacity .7s ease, transform .8s cubic-bezier(.6,-.2,.3,1);
+    }
+    #splash.go .marquee { opacity: 0; transform: scale(1.12) translateY(-18px); }
+
+    .bulb {
+      position: absolute; width: 11px; height: 11px; border-radius: 50%;
+      background: radial-gradient(circle at 38% 32%, #fff, var(--bulb) 42%, #b07a1e 100%);
+      box-shadow: 0 0 6px 2px rgba(255,233,176,0.55);
+      animation: chase 1.5s linear infinite;
+    }
+    @keyframes chase {
+      0%, 12%   { opacity: 1;   box-shadow: 0 0 10px 3px rgba(255,233,176,0.9), 0 0 22px 6px rgba(232,198,106,0.5); }
+      26%, 100% { opacity: 0.28; box-shadow: 0 0 4px 1px rgba(255,233,176,0.3); }
+    }
+
+    .pre {
+      font-family: 'Cinzel', serif; font-weight: 700;
+      letter-spacing: 0.42em; font-size: clamp(9px, 1.3vw, 13px);
+      color: var(--gold); opacity: 0.8; margin-bottom: 14px; padding-left: 0.42em;
+    }
+    .pre b { color: var(--carnival); }
+    .title {
+      font-family: 'Ewert', system-ui, serif; font-weight: 400;
+      font-size: clamp(54px, 12vw, 138px); line-height: 0.86;
+      letter-spacing: 0.01em;
+      color: var(--gold-brt);
+      text-shadow:
+        0 2px 0 #b07a1e, 0 4px 0 #6e4a12,
+        0 0 28px rgba(232,198,106,0.55), 0 14px 30px rgba(0,0,0,0.6);
+      animation: flicker 6s infinite steps(1);
+    }
+    @keyframes flicker {
+      0%, 94%, 100% { opacity: 1; }
+      95% { opacity: 0.72; } 96% { opacity: 1; } 97% { opacity: 0.55; } 98% { opacity: 1; }
+    }
+    .rule {
+      width: min(74%, 380px); height: 14px; margin: 20px auto 14px;
+      background:
+        radial-gradient(circle at 50% 0, var(--carnival) 5px, transparent 6px) 50% 0/22px 14px no-repeat,
+        linear-gradient(90deg, transparent, var(--gold) 18%, var(--gold) 82%, transparent);
+      mask: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+      -webkit-mask: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+    }
+    .sub {
+      font-family: 'Cinzel', serif; font-weight: 500;
+      letter-spacing: 0.34em; font-size: clamp(11px, 1.8vw, 18px);
+      color: var(--ink); opacity: 0.82; padding-left: 0.34em;
+    }
+    .cta {
+      margin-top: 36px;
+      font-family: 'Silkscreen', monospace; font-weight: 700;
+      font-size: clamp(12px, 1.7vw, 17px); letter-spacing: 0.12em;
+      color: var(--gold-brt);
+      animation: blink 1.25s ease-in-out infinite;
+    }
+    .cta span { color: var(--carnival); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.28} }
+    .hint {
+      margin-top: 16px;
+      font-family: 'Cinzel', serif; font-weight: 500;
+      font-size: clamp(9px, 1.2vw, 12px); letter-spacing: 0.16em;
+      color: var(--ink); opacity: 0.42;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .bulb, .cta, .title, .confetti i { animation: none !important; }
+      .curtain, .marquee { transition: opacity .4s ease; }
+      .cta { opacity: 0.9; }
     }
   </style>
 </head>
 <body>
+  <div id="bg"><div class="confetti" id="confetti"></div></div>
+
   <canvas id="game"></canvas>
+
+  <div id="splash">
+    <div class="curtain l"></div>
+    <div class="curtain r"></div>
+    <div class="marquee" id="marquee">
+      <div class="pre">EST. UNDER THE <b>DARK</b> BIG TOP</div>
+      <h1 class="title">CLOWN<br>CITY</h1>
+      <div class="rule"></div>
+      <div class="sub">A&nbsp;&nbsp;UNICYCLE&nbsp;&nbsp;AUTO-RUNNER</div>
+      <div class="cta">&#9656;&nbsp; PRESS <span>START</span> &nbsp;&#9666;</div>
+      <div class="hint">steer &#9666;&#9656; &nbsp;&middot;&nbsp; tap to jump &nbsp;&middot;&nbsp; tap your heading to spray</div>
+    </div>
+  </div>
+
   <script src="js/tokens.js"></script>
   <script src="js/engine.js"></script>
   <script src="js/input.js"></script>
@@ -39,5 +225,82 @@
   <script src="js/particles.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/game.js"></script>
+
+  <script>
+    // ── Front-door presentation (no game logic touched) ──
+    (function () {
+      var splash = document.getElementById('splash');
+      var marquee = document.getElementById('marquee');
+
+      // Confetti motes drifting behind everything
+      var conf = document.getElementById('confetti');
+      var hues = ['#e23b30', '#ffd764', '#3b82d6', '#4cc77a', '#e056b0', '#f3e2b8'];
+      for (var c = 0; c < 14; c++) {
+        var s = document.createElement('i');
+        s.style.left = (4 + c * 6.7 % 96) + 'vw';
+        s.style.background = hues[c % hues.length];
+        s.style.animationDuration = (7 + (c % 5) * 2.2) + 's';
+        s.style.animationDelay = (-(c * 1.37) % 9) + 's';
+        s.style.opacity = (0.28 + (c % 3) * 0.12).toFixed(2);
+        conf.appendChild(s);
+      }
+
+      // Marquee bulbs: lay them around the panel's perimeter, delayed in
+      // sequence so a point of light chases around the frame.
+      function layBulbs() {
+        var existing = marquee.querySelectorAll('.bulb');
+        for (var i = 0; i < existing.length; i++) existing[i].remove();
+        var w = marquee.offsetWidth, h = marquee.offsetHeight, gap = 30, inset = 13;
+        var cols = Math.max(4, Math.round((w - inset * 2) / gap));
+        var rows = Math.max(3, Math.round((h - inset * 2) / gap));
+        var pts = [], x, y;
+        for (x = 0; x < cols; x++) pts.push([inset + x * (w - inset * 2) / (cols - 1), inset]);           // top L→R
+        for (y = 1; y < rows; y++) pts.push([w - inset, inset + y * (h - inset * 2) / (rows - 1)]);        // right T→B
+        for (x = cols - 2; x >= 0; x--) pts.push([inset + x * (w - inset * 2) / (cols - 1), h - inset]);   // bottom R→L
+        for (y = rows - 2; y >= 1; y--) pts.push([inset, inset + y * (h - inset * 2) / (rows - 1)]);       // left B→T
+        var total = pts.length;
+        for (var k = 0; k < total; k++) {
+          var b = document.createElement('div');
+          b.className = 'bulb';
+          b.style.left = (pts[k][0] - 5.5) + 'px';
+          b.style.top  = (pts[k][1] - 5.5) + 'px';
+          b.style.animationDelay = (-(k / total) * 1.5).toFixed(3) + 's';
+          marquee.appendChild(b);
+        }
+      }
+      // fonts can change the panel size; lay bulbs after they load + on resize
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(layBulbs);
+      window.addEventListener('load', layBulbs);
+      window.addEventListener('resize', layBulbs);
+      layBulbs();
+
+      // Enter: part the curtains, then hand off to the game's title once.
+      // While the splash is up, the game idles on its title underneath. The
+      // FIRST input is fully owned by the splash (we stop it reaching the game),
+      // then we advance the game off its title immediately — concurrent with the
+      // curtains parting — so the reveal lands on level-select and the canvas
+      // title is never seen. The marquee IS the title; no redundant second one.
+      var entered = false;
+      var inputTypes = ['keydown', 'pointerdown', 'touchstart', 'mousedown'];
+      function onInput(e) {
+        if (entered) return;
+        if (e.type === 'keydown' && !['Space', 'Enter', 'KeyZ', 'NumpadEnter'].includes(e.code)) return;
+        e.stopImmediatePropagation();
+        if (e.cancelable) e.preventDefault();
+        enter();
+      }
+      function enter() {
+        if (entered) return; entered = true;
+        inputTypes.forEach(function (t) { window.removeEventListener(t, onInput, true); });
+        // hand off to the game now (listeners are gone, so this reaches it)
+        window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true }));
+        splash.classList.add('go');
+        setTimeout(function () { splash.style.display = 'none'; }, 1080);
+      }
+      inputTypes.forEach(function (t) {
+        window.addEventListener(t, onInput, { capture: true, passive: false });
+      });
+    })();
+  </script>
 </body>
 </html>

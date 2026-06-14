@@ -44,7 +44,7 @@ const Game = {
       draw(ctx) {
         if (Game.state === 'playing' || Game.state === 'levelComplete' || Game.state === 'paused') {
           ctx.save();
-          ctx.translate(-Camera.x, -Camera.y);
+          ctx.translate(-Camera.drawX, -Camera.drawY);
           Player.draw(ctx);
           ctx.restore();
         }
@@ -538,6 +538,34 @@ const Game = {
       ctx.fill();
       ctx.textAlign = 'left';
     }
+
+    // Speedometer (momentum gauge)
+    this.drawSpeedometer(ctx);
+  },
+
+  // Momentum gauge: fills 0->1, brightens to the theme accent past the 0.5
+  // threshold where the spin-out attack and wall rev-climb unlock.
+  drawSpeedometer(ctx) {
+    const m = Math.max(0, Math.min(1, Player.momentum));
+    const w = 150, h = 7;
+    const x = (Engine.width - w) / 2;
+    const y = Engine.height - 32;
+    ctx.fillStyle = Tokens.rgba(Tokens.color.overlay, 0.45);
+    ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
+    ctx.fillStyle = Tokens.rgba(Tokens.color.white, 0.10);
+    ctx.fillRect(x, y, w, h);
+    const ready = m >= 0.5;
+    const gc = Level.getTheme().goalColor;
+    ctx.fillStyle = ready ? `rgba(${gc[0]},${gc[1]},${gc[2]},0.9)` : Tokens.rgba(Tokens.color.dust, 0.5);
+    ctx.fillRect(x, y, w * m, h);
+    // half-speed threshold tick
+    ctx.fillStyle = Tokens.rgba(Tokens.color.white, 0.55);
+    ctx.fillRect(x + w * 0.5 - 1, y - 3, 2, h + 6);
+    ctx.fillStyle = Tokens.rgba(Tokens.color.dust, 0.5);
+    ctx.font = Tokens.font.xs;
+    ctx.textAlign = 'center';
+    ctx.fillText('SPEED', Engine.width / 2, y - 6);
+    ctx.textAlign = 'left';
   },
 
   drawLevelComplete(ctx) {
