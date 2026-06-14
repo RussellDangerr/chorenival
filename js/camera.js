@@ -8,6 +8,15 @@ const Camera = {
   shakeAmount: 0,
   shakeDecay: Tokens.motion.shakeDecay,
 
+  // Pixel-snapped render offsets. Physics keeps the exact float x/y (so the
+  // follow stays smooth), but DRAWING rounds to whole pixels. If the draw
+  // offset is fractional, every tile edge lands mid-pixel; fillRect then
+  // anti-aliases those edges and the dark background bleeds through the joins
+  // as shimmering "seams". Rounding once here means the world, entities, and
+  // player all share the SAME integer offset, so they stay perfectly aligned.
+  get drawX() { return Math.round(this.x); },
+  get drawY() { return Math.round(this.y); },
+
   update(dt) {
     // Target: player center with lookahead based on velocity
     const px = Player.x + Player.w / 2;

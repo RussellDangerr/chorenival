@@ -29,16 +29,24 @@ const Player = {
   vx: 0, vy: 0,
 
   // ── Unicycle momentum (auto-runner) ──
-  runSpeed: 300,            // cruise top speed (speed = 1)
+  runSpeed: 400,            // cruise top speed (speed = 1)
   startRampTime: 1.5,       // level start: ramp 0 -> full over this many seconds
-  accelRate: 1400,          // px/s^2 — chase target during ramp / cruise
+  accelRate: 1400,          // px/s^2 — chase target during the start ramp
+  cruiseAccel: 420,         // px/s^2 — DELIBERATE eased build to top speed in cruise (~1.2s)
   reverseDecel: 2400,       // px/s^2 — braking old momentum during a turnaround
   reverseAccel: 1600,       // px/s^2 — accelerating into the new direction
-  pauseAtZeroTime: 0.05,    // brief commit beat at the bottom of a reversal
+  pauseAtZeroTime: 0.03,    // brief commit beat at the bottom of a reversal (tightened)
   zeroEpsilon: 12,          // |vx| under this counts as "stopped"
-  treadmillCap: 150,        // 0.5 * runSpeed — speed cap while on a treadmill
+  treadmillCap: 200,        // 0.5 * runSpeed — speed cap while on a treadmill
   treadmillDamp: 3000,      // px/s^2 — damp toward the cap (non-directional)
   brakeWindow: 0.18,        // max lifetime of the wheel-throw attack hitbox
+
+  // ── Spin-out attack (tap your CURRENT direction with momentum) ──
+  attackThreshold: 0.5,     // momentum (0..1) needed to spin out an attack
+  spinAttackCost: 0.45,     // fraction of speed spent on a spin-out (bleeds momentum)
+  spinAttackWindow: 0.16,   // hitbox lifetime
+  spinAttackCooldown: 0.22, // min seconds between spin-outs
+
   maxFallSpeed: 720,
 
   // ── Jump tuning (fixed-height tap jump) ──
@@ -55,6 +63,18 @@ const Player = {
 
   // ── Ledge assist ──
   ledgeAssist: 2,         // extra pixels for ground check width
+
+  // ── Wall-slide / wall-jump ──
+  // Bozo clings to a wall he's steering into while airborne, slides down at a
+  // capped speed, and can wall-jump up-and-away. The jump FLIPS travelDir away
+  // from the wall, so ricocheting between two close walls climbs a shaft.
+  wallSlideSpeed: 120,     // px/s — max descent while clinging (lower = stickier)
+  wallJumpForceY: -440,    // px/s — launch height (just under the -480 ground jump)
+  wallJumpPushX: 300,      // px/s — sideways kick away from the wall
+  wallStickTime: 0.08,     // s — "wall-coyote": grace to still wall-jump after leaving
+  wallJumpLockTime: 0.12,  // s — ignore steering back into the wall after a wall-jump
+  revClimbSpeed: 280,      // px/s — upward pop when you slam a wall with speed (augments slide)
+  revClimbThreshold: 0.4,  // momentum (0..1) needed to rev-climb; below this you just slide
 
   // ── Collision: don't treat flat-floor seams as walls ──
   // X-collision only blocks if a tile rises into the body by more than this.
@@ -82,6 +102,17 @@ const Player = {
   brakeTimer: 0,          // counts down the wheel-throw window during a brake
   pausedAtZero: 0,        // commit-beat accumulator at the bottom of a reversal
   attackDir: 0,           // wheel-throw direction (= old travelDir); 0 = inactive
+
+  // ── Wall-slide / wall-jump state ──
+  wallSliding: false,     // currently clinging to a wall this frame
+  wallStickTimer: 0,      // wall-coyote countdown (can still wall-jump > 0)
+  wallJumpLockTimer: 0,   // steer-back lockout after a wall-jump
+  wallContactDir: 0,      // sign of the wall we're touching (+1 wall on right)
+
+  // ── Spin-out attack state ──
+  spinAttackTimer: 0,     // forward attack hitbox countdown
+  spinAttackDir: 0,       // direction of the active spin-out (0 = inactive)
+  _spinCooldown: 0,       // throttles repeat spin-outs
 
   // ── Animation state ──
   squash: 1,
@@ -131,6 +162,14 @@ const Player = {
   _dustTimer: 0,
   _sparkTimer: 0,
   _iceTimer: 0,
+  _wallDustTimer: 0,
+
+  // Momentum (0..1): your current speed fraction. Built by cruising along the
+  // eased curve, spent by attacks and wall rev-climbs. Read by the speedometer,
+  // the spin-out attack threshold, and the wall climb.
+  get momentum() {
+    return Math.min(1, Math.abs(this.vx) / this.runSpeed);
+  },
 
   spawn(x, y) {
     this.x = x;
@@ -148,6 +187,13 @@ const Player = {
     this.brakeTimer = 0;
     this.pausedAtZero = 0;
     this.attackDir = 0;
+    this.wallSliding = false;
+    this.wallStickTimer = 0;
+    this.wallJumpLockTimer = 0;
+    this.wallContactDir = 0;
+    this.spinAttackTimer = 0;
+    this.spinAttackDir = 0;
+    this._spinCooldown = 0;
     this.facing = 1;
     this.wheelAngle = 0;
     this.lean = 0;
@@ -244,7 +290,8 @@ const Player = {
     // Reversal: a steer against committed travel starts a weighty turnaround.
     // The wheel "kicks" out in the OLD direction (attackDir) as a braking
     // lunge — and that lunge is the attack hitbox (see getAttackRect).
-    if (wantDir !== 0 && wantDir !== this.travelDir && this.runState !== 'brake') {
+    if (wantDir !== 0 && wantDir !== this.travelDir && this.runState !== 'brake' && this.wallJumpLockTimer <= 0 &&
+        !(this.wallSliding && wantDir === -this.wallContactDir)) {   // steering off a wall = wall-jump, not a brake
       this.runState = 'brake';
       this.brakeTimer = this.brakeWindow;
       this.pausedAtZero = 0;
@@ -252,6 +299,7 @@ const Player = {
       this.squash = 1.25;
       Audio.bounce();
       this._spawnBrakeDust();
+      this._carnivalSpray(this.attackDir);   // multicolour spray = the visible attack
     }
     if (wantDir !== 0) this.desiredDir = wantDir;
 
@@ -281,8 +329,13 @@ const Player = {
         }
       }
     } else {
-      // Cruise: hold full speed in the committed direction.
-      this.vx = approach(this.vx, this.travelDir * this.runSpeed, this.accelRate * dt);
+      // Cruise: build toward top speed along a DELIBERATE eased curve — speed is
+      // something you spin up and feel, not instant. Reversing drops you low so
+      // you re-earn it; attacks and wall rev-climbs spend it.
+      const targetVx = this.travelDir * this.runSpeed;
+      const frac = Math.min(1, Math.abs(this.vx) / this.runSpeed);
+      const accel = this.cruiseAccel * (1 - 0.5 * frac);   // eases as you near the top
+      this.vx = approach(this.vx, targetVx, accel * dt);
     }
 
     // Treadmill: cap and damp speed toward 0.5, non-directional (only slows).
@@ -302,18 +355,82 @@ const Player = {
       this.coyoteTimer -= dt;
     }
 
-    // ── Jump (fixed height: ground or coyote) ──
-    if (jumpBuffered && (this.grounded || (this.coyoteTimer > 0 && this.wasGrounded))) {
-      this._doGroundJump();
+    // ── Wall-slide detection ──
+    // wallDir/grounded here are from LAST frame's resolveCollisions (the same
+    // one-frame-late model coyote uses). Cling when airborne, touching a wall,
+    // and steering INTO it (travelDir === wallDir).
+    const onWall = !this.grounded && this.wallDir !== 0 && this.travelDir === this.wallDir;
+    if (onWall) {
+      this.wallStickTimer = this.wallStickTime;   // refresh wall-coyote
+      this.wallContactDir = this.wallDir;
+    } else if (this.wallStickTimer > 0) {
+      this.wallStickTimer -= dt;
+    }
+    this.wallSliding = onWall;
+    if (this.wallJumpLockTimer > 0) this.wallJumpLockTimer -= dt;
+    // Cap descent while clinging — rising (a jump's ascent) is left untouched.
+    if (onWall && this.vy > this.wallSlideSpeed) this.vy = this.wallSlideSpeed;
+
+    // ── Spin-out attack ──
+    // Tap your CURRENT direction (re-press the key / swipe the way you're going)
+    // with momentum >= threshold to spit the wheel out forward and kill what's
+    // ahead — no reversing needed, works on the ground OR mid-air. Spends
+    // momentum, so you slow and re-earn it. (Clinging a wall zeroes vx, dropping
+    // momentum below the threshold, so it won't fire while you're wall-stuck.)
+    if (this._spinCooldown > 0) this._spinCooldown -= dt;
+    if (this.spinAttackTimer > 0) this.spinAttackTimer -= dt;
+    const sameDirTap =
+      (Input.swipeEdge() === this.travelDir) ||
+      (this.travelDir > 0 && (Input.pressed('ArrowRight') || Input.pressed('KeyD'))) ||
+      (this.travelDir < 0 && (Input.pressed('ArrowLeft')  || Input.pressed('KeyA')));
+    if (sameDirTap && this.runState !== 'brake' &&
+        this.momentum >= this.attackThreshold && this._spinCooldown <= 0) {
+      this._doSpinAttack();
+    }
+
+    // A wall-jump can also be triggered by HITTING AWAY from the wall (steer off).
+    const awayDir = -this.wallContactDir;
+    const steerOff = awayDir !== 0 && (
+      Input.swipeEdge() === awayDir ||
+      (awayDir > 0 && (Input.pressed('ArrowRight') || Input.pressed('KeyD'))) ||
+      (awayDir < 0 && (Input.pressed('ArrowLeft')  || Input.pressed('KeyA')))
+    );
+
+    // ── Jump: ground / coyote, else a wall-jump (from a jump input OR steering off) ──
+    if (jumpBuffered) {
+      if (this.grounded || (this.coyoteTimer > 0 && this.wasGrounded)) {
+        this._doGroundJump();
+      } else if (onWall || this.wallStickTimer > 0) {
+        this._doWallJump();
+      }
+    } else if ((onWall || this.wallStickTimer > 0) && steerOff) {
+      this._doWallJump();
     }
 
     // ── Apply velocity ──
     this.wasGrounded = this.grounded;
+    const prevWallDir = this.wallDir;            // wall contact from LAST frame
+    const speedAtContact = Math.abs(this.vx);    // speed we may slam a wall with this frame
     this.x += this.vx * dt;
     this.y += this.vy * dt;
 
     // ── Resolve collisions (with corner correction) ──
     this.resolveCollisions();
+
+    // ── Speed → wall rev-climb (augments wall-slide / wall-jump) ──
+    // A NEW head-on wall contact while airborne, arriving with momentum, revs
+    // the wheel and pops you a small amount UP the wall (height ∝ arrival speed).
+    // The collision already zeroed vx, so that horizontal speed is "spent" here.
+    if (!this.grounded && this.wallDir !== 0 && prevWallDir === 0 && this.travelDir === this.wallDir) {
+      const m = Math.min(1, speedAtContact / this.runSpeed);
+      if (m >= this.revClimbThreshold) {
+        this.vy = Math.min(this.vy, -this.revClimbSpeed * m);   // upward pop (keep the more-upward)
+        this.wallContactDir = this.wallDir;
+        this.wallSliding = true;
+        this._carnivalSpray(-this.wallDir);     // spray flings off the wall
+        Camera.shake(2);
+      }
+    }
 
     // ── Check hazard collisions (with smaller hitbox) ──
     this.checkHazards();
@@ -345,6 +462,7 @@ const Player = {
       leanT += -this.attackDir * this.brakeLean;
     }
     if (!this.grounded) leanT *= 0.5;   // softer in the air
+    if (this.wallSliding) leanT = this.wallContactDir * this.brakeLean;  // hug the wall
     this.leanTarget = leanT;
     this.lean += (this.leanTarget - this.lean) * this.leanRate * dt;
 
@@ -366,6 +484,20 @@ const Player = {
         Particles.emit(
           this.x + (dir < 0 ? this.w : 0), this.y + this.h,
           -dir * (20 + Math.random() * 40), -(10 + Math.random() * 30),
+          Tokens.rgba(Tokens.color.dust, 0.3), 0.15 + Math.random() * 0.1
+        );
+      }
+    }
+
+    // ── Wall-slide dust (trickles down the wall face) ──
+    if (this.wallSliding && this.vy > 20) {
+      this._wallDustTimer += dt;
+      if (this._wallDustTimer > 0.05) {
+        this._wallDustTimer = 0;
+        const wx = this.x + (this.wallContactDir > 0 ? this.w : 0);
+        Particles.emit(
+          wx, this.y + Math.random() * this.h,
+          -this.wallContactDir * (10 + Math.random() * 20), 20 + Math.random() * 30,
           Tokens.rgba(Tokens.color.dust, 0.3), 0.15 + Math.random() * 0.1
         );
       }
@@ -398,6 +530,38 @@ const Player = {
         this.x + Math.random() * this.w, this.y + this.h,
         (Math.random() - 0.5) * 80, 40 + Math.random() * 40,
         Tokens.rgba(Tokens.color.white, 0.4), 0.15 + Math.random() * 0.1
+      );
+    }
+  },
+
+  // Wall-jump: launch up-and-away from the wall, and FLIP travelDir away so the
+  // auto-runner rides off the wall (and aims at the opposite wall of a shaft).
+  _doWallJump() {
+    const away = -(this.wallContactDir || this.wallDir) || -this.travelDir || 1;
+    this.vy = this.wallJumpForceY;
+    this.vx = away * this.wallJumpPushX;
+    this.travelDir = away;
+    this.desiredDir = away;
+    this.runState = 'cruise';
+    this.rampT = 1;
+    this.attackDir = 0;
+    this.wallJumpLockTimer = this.wallJumpLockTime;
+    this.wallStickTimer = 0;
+    this.wallSliding = false;
+    this.grounded = false;
+    this.coyoteTimer = 0;
+    this.squash = 1.4;
+    this.setAnim('jump');
+    Audio.jump();
+    Input.consumeJump();
+    Camera.shake(3);
+    // Kick burst off the wall, particles flying out in the away direction.
+    const wx = this.x + (this.wallContactDir > 0 ? this.w : 0);
+    for (let i = 0; i < 7; i++) {
+      Particles.emit(
+        wx, this.y + this.h * (0.3 + Math.random() * 0.5),
+        away * (80 + Math.random() * 120), -(20 + Math.random() * 60),
+        Tokens.rgba(Tokens.color.white, 0.5), 0.15 + Math.random() * 0.12
       );
     }
   },
@@ -504,6 +668,15 @@ const Player = {
       for (const tile of tiles) {
         // Check if foot is right at the top of a tile (within 2px)
         if (Math.abs(footY - tile.y) < 2) {
+          // Only grab a tile whose TOP is exposed to air — i.e. a REAL ledge.
+          // A wall is a vertical stack of tiles, so every interior tile's "top"
+          // is buried under the tile above it. Without this check, ledge-assist
+          // happily snapped Bozo onto a wall tile (grounded=true, vy=0) and
+          // pinned him mid-air — which also let him jump off the wall. Reject
+          // any tile that has a solid tile directly above (not a standable lip).
+          const col = Math.floor(tile.x / Level.tileSize);
+          const row = Math.floor(tile.y / Level.tileSize);
+          if (Level._isSolid(row - 1, col)) continue;
           // Check if the extended foot overlaps the tile horizontally
           if (extR > tile.x && extL < tile.x + tile.w) {
             // Check if the actual hitbox doesn't overlap (meaning only the assist does)
@@ -570,17 +743,64 @@ const Player = {
     }
   },
 
-  // The wheel-throw hitbox: a short lunge in the OLD travel direction, live
-  // only during the braking phase of a reversal. This IS the attack.
-  getAttackRect() {
-    if (this.runState !== 'brake' || this.brakeTimer <= 0 || this.attackDir === 0) return null;
-    const reach = 18;
-    const hh = this.h * 0.7;
-    const y = this.y + this.h - hh;        // lower body — where the wheel is
+  // A lunge hitbox extending from Bozo's center outward in `dir` by `reach`.
+  _lungeRect(dir) {
+    const reach = 22;
+    const hh = this.h * 0.9;                // most of the body, not just the low wheel
+    const y = this.y + this.h - hh;
     const half = this.w / 2;
-    // Spans from Bozo's center outward past the leading edge by `reach`.
-    const x = this.attackDir > 0 ? this.x + half : this.x + half - (half + reach);
+    const x = dir > 0 ? this.x + half : this.x + half - (half + reach);
     return { x, y, w: half + reach, h: hh };
+  },
+
+  // The attack hitbox — live during EITHER a spin-out (forward) or the braking
+  // phase of a reversal (the wheel kicks out the OLD way). Both ARE the attack.
+  getAttackRect() {
+    if (this.spinAttackTimer > 0 && this.spinAttackDir !== 0) return this._lungeRect(this.spinAttackDir);
+    if (this.runState === 'brake' && this.brakeTimer > 0 && this.attackDir !== 0) return this._lungeRect(this.attackDir);
+    return null;
+  },
+
+  // Spin-out: spit the wheel forward, spend momentum (bleed speed), spray.
+  _doSpinAttack() {
+    this.spinAttackDir = this.travelDir;
+    this.spinAttackTimer = this.spinAttackWindow;
+    this._spinCooldown = this.spinAttackCooldown;
+    this.vx *= (1 - this.spinAttackCost);
+    this.squash = 1.2;
+    Camera.shake(2);
+    Audio.bounce();
+    this._carnivalSpray(this.spinAttackDir);
+  },
+
+  // Multicolour carnival sand spray flung in `dir` — the wheel spinning out.
+  _carnivalSpray(dir) {
+    const pal = Tokens.color.carnival;
+    const ox = dir > 0 ? this.x + this.w : this.x;
+    const oy = this.y + this.h - this.wheelRadius;
+    for (let i = 0; i < 28; i++) {
+      // Fan from near-horizontal (direct hits on what's right ahead) up to a
+      // high arc (rains back down onto enemies). Every particle is LETHAL —
+      // the confetti is the hitbox (see checkHazards._sprayHits).
+      Particles.emit(
+        ox, oy + (Math.random() - 0.5) * this.h,
+        dir * (170 + Math.random() * 340), -(10 + Math.random() * 260),
+        pal[i % pal.length], 0.4 + Math.random() * 0.35, 4.5, true
+      );
+    }
+  },
+
+  // True if any LETHAL carnival-spray particle is currently overlapping `r`
+  // (small padding for forgiveness). The visible confetti IS the hitbox, so a
+  // wide fan reliably catches what's ahead and rains down onto enemies.
+  _sprayHits(r) {
+    const pool = Particles.pool;
+    for (let i = 0; i < pool.length; i++) {
+      const p = pool[i];
+      if (!p.lethal) continue;
+      if (p.x >= r.x - 2 && p.x <= r.x + r.w + 2 && p.y >= r.y - 2 && p.y <= r.y + r.h + 2) return true;
+    }
+    return false;
   },
 
   checkHazards() {
@@ -599,6 +819,9 @@ const Player = {
       const e = Entities.list[i];
       if (!e.getHazardRect || e.dead) continue;
       const r = e.getHazardRect();
+
+      // (0) Lethal carnival spray — the confetti itself kills what it lands on.
+      if (this._sprayHits(r)) { Entities.kill(e); continue; }
 
       // (a) Wheel-throw lunge connects.
       if (attack && aabb(attack, r)) { Entities.kill(e); continue; }
@@ -734,10 +957,31 @@ const Player = {
     ctx.fillRect(footX - 4, eyeY, 3, 4);
     ctx.fillRect(footX + 1, eyeY, 3, 4);
 
-    // Clown nose (subtle accent)
+    // Clown nose (clear red accent)
     ctx.fillStyle = Tokens.color.clownNose;
     ctx.beginPath();
-    ctx.arc(footX, bodyTop + bh * 0.58, 2, 0, Math.PI * 2);
+    ctx.arc(footX, bodyTop + bh * 0.58, 2.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ── Blue party hat: cone + 3 dots + pom-pom (sits on the crown) ──
+    const hatBaseY = bodyTop + 1;
+    const hatH = 11, hatHW = 6, apexX = footX + 1;   // slight tilt for a jaunty look
+    ctx.fillStyle = Tokens.color.partyHat;
+    ctx.beginPath();
+    ctx.moveTo(footX - hatHW, hatBaseY);
+    ctx.lineTo(footX + hatHW, hatBaseY);
+    ctx.lineTo(apexX, hatBaseY - hatH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = Tokens.color.partyHatDot;
+    for (let i = 1; i <= 3; i++) {                   // 3 dots up the centerline
+      const t = i / 4;
+      ctx.beginPath();
+      ctx.arc(footX + (apexX - footX) * t, hatBaseY - hatH * t, 1.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.beginPath();                                 // pom-pom at the apex
+    ctx.arc(apexX, hatBaseY - hatH, 1.7, 0, Math.PI * 2);
     ctx.fill();
 
     // Speed lines when moving fast (anchored to the torso; tilt with the lean)

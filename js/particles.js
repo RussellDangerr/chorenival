@@ -1,9 +1,13 @@
 // ─── Particles: lightweight particle system ───
 const Particles = {
   pool: [],
-  maxParticles: 200,
+  maxParticles: 300,
 
-  emit(x, y, vx, vy, color, life) {
+  // `size` is optional — pass it for chunkier bursts (e.g. the carnival spray);
+  // omit it and particles default to the usual small 2-4px dust.
+  // `lethal` (optional) marks a particle as able to kill enemies it lands on —
+  // the combat spray uses this so the visible confetti IS the hitbox.
+  emit(x, y, vx, vy, color, life, size, lethal) {
     if (this.pool.length >= this.maxParticles) {
       this.pool[0] = this.pool[this.pool.length - 1];
       this.pool.pop();
@@ -11,7 +15,8 @@ const Particles = {
     this.pool.push({
       x, y, vx, vy, color,
       life, maxLife: life,
-      size: 2 + Math.random() * 2
+      size: size != null ? size * (0.7 + Math.random() * 0.6) : 2 + Math.random() * 2,
+      lethal: !!lethal
     });
   },
 
