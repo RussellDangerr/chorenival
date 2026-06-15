@@ -11,6 +11,8 @@ const Level = {
   // 1 = solid, 0 = air, g = goal
   // c = checkpoint, o = collectible (gem)
   // T = treadmill (caps Bozo's speed at 0.5 and bleeds momentum)
+  // / = slope rising to the right, \ = slope rising to the left (45°)
+  //     (authoring: a literal backslash must be written \\ inside the JS strings)
 
   // Material definitions: only the colour matters here; physics live in Player.
   materials: {
@@ -204,6 +206,9 @@ const Level = {
           this.tiles.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, type: 'solid', material: 'solid' });
         } else if (materialMap[ch]) {
           this.tiles.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, type: 'solid', material: materialMap[ch] });
+        } else if (ch === '/' || ch === '\\') {
+          const slopeDir = ch === '/' ? 1 : -1;
+          this.tiles.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, type: 'slope', slopeDir });
         } else if (ch === 'g') {
           this.tiles.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, type: 'goal' });
         } else if (ch === 'c') {
@@ -227,6 +232,15 @@ const Level = {
       this._tileGrid[key] = tile;
     }
 
+    // Slopes live in their own grid — kept OUT of _tileGrid so the square-tile
+    // X/Y passes never treat a slope's bounding box as a wall/floor.
+    this._slopeGrid = {};
+    for (const tile of this.tiles) {
+      if (tile.type !== 'slope') continue;
+      const key = Math.floor(tile.x / this.tileSize) + ',' + Math.floor(tile.y / this.tileSize);
+      this._slopeGrid[key] = tile;
+    }
+
     // Build solid grid for edge detection in rendering
     this.gridRows = data.length;
     this.gridCols = data[0].length;
@@ -235,7 +249,7 @@ const Level = {
       this.solidGrid[row] = [];
       for (let col = 0; col < data[row].length; col++) {
         const ch = data[row][col];
-        this.solidGrid[row][col] = (ch === '1' || !!materialMap[ch]);
+        this.solidGrid[row][col] = (ch === '1' || !!materialMap[ch] || ch === '/' || ch === '\\');
       }
     }
 
@@ -261,6 +275,30 @@ const Level = {
       for (let gx = x1; gx <= x2; gx++) {
         const tile = this._tileGrid[gx + ',' + gy];
         if (tile && !tile.broken) result.push(tile);
+      }
+    }
+    return result;
+  },
+
+  // Surface (top) Y of a slope tile at a world X. Linear for 45°.
+  //   '/' (slopeDir +1): low at the left edge, high at the right.
+  //   '\' (slopeDir -1): high at the left edge, low at the right.
+  slopeSurfaceY(tile, worldX) {
+    const s = this.tileSize;
+    const localX = Math.max(0, Math.min(s, worldX - tile.x));
+    return tile.slopeDir > 0 ? tile.y + (s - localX) : tile.y + localX;
+  },
+
+  getSlopesNear(px, py, pw, ph) {
+    if (!this._slopeGrid) return [];
+    const s = this.tileSize;
+    const x1 = Math.floor((px - s) / s), x2 = Math.floor((px + pw + s) / s);
+    const y1 = Math.floor((py - s) / s), y2 = Math.floor((py + ph + s) / s);
+    const result = [];
+    for (let gy = y1; gy <= y2; gy++) {
+      for (let gx = x1; gx <= x2; gx++) {
+        const t = this._slopeGrid[gx + ',' + gy];
+        if (t) result.push(t);
       }
     }
     return result;
