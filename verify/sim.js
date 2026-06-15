@@ -7,16 +7,13 @@
 // It stops Engine's RAF loop and steps Player.update() by hand so results are
 // independent of real time. A scratch map named '__sim__' is appended to
 // Level.maps and reused across runs.
+//
+// Input is a top-level `const` (not a window property), so it can't be swapped
+// out — player.js closes over the real object. Instead we drive that real
+// `Input`: set its sticky `runDir`, and arm its jump buffer on a chosen frame.
+// `Input.update()` is NOT in this loop, so we tick the buffer down ourselves
+// (mirroring input.js) and restore everything in a finally block.
 (function () {
-  function fakeInput() {
-    return {
-      runDir: 0, _jumpFrame: -1, _frame: 0,
-      jumpBuffered() { return this._frame === this._jumpFrame; },
-      consumeJump() {}, swipeEdge() { return 0; },
-      pressed() { return false; }, tapped() { return false; },
-    };
-  }
-
   window.runSim = function (opts) {
     opts = opts || {};
     Engine.running = false;                       // halt the live loop
@@ -33,11 +30,12 @@
     else { Level.maps[idx] = map; }
     Level.load(idx);
 
-    const wasMuted = Audio.muted; Audio.muted = true;
-    const realInput = window.Input;
-    const fin = fakeInput(); window.Input = fin;
-    fin.runDir = opts.runDir != null ? opts.runDir : 0;
-    fin._jumpFrame = opts.jumpFrame != null ? opts.jumpFrame : -1;
+    // Save + drive the REAL Input/Audio, restore in finally.
+    const saved = { muted: Audio.muted, runDir: Input.runDir, buffer: Input.buffer };
+    Audio.muted = true;
+    Input.buffer = {};
+    Input.runDir = opts.runDir != null ? opts.runDir : 0;
+    const jumpFrame = opts.jumpFrame != null ? opts.jumpFrame : -1;
 
     const s = Level.tileSize;
     const px = opts.x != null ? opts.x : map.spawn[0] * s;
@@ -49,25 +47,34 @@
     const frames = opts.frames || 240;
     const sample = opts.sample || 1;
     const trace = [];
-    for (let f = 0; f < frames; f++) {
-      fin._frame = f;
-      if (opts.steer && opts.steer[f] != null) fin.runDir = opts.steer[f];
-      Player.update(Engine.fixedDt);
-      if (f % sample === 0) {
-        trace.push({
-          f,
-          x: +Player.x.toFixed(2), y: +Player.y.toFixed(2),
-          vx: +Player.vx.toFixed(2), vy: +Player.vy.toFixed(2),
-          grounded: Player.grounded,
-          onSlope: !!Player.onSlope,
-          slopeDir: Player.slopeDir || 0,
-          momentum: +Player.momentum.toFixed(3),
-          overspeed: +((Player.overspeed || 0)).toFixed(3),
-        });
+    try {
+      for (let f = 0; f < frames; f++) {
+        if (opts.steer && opts.steer[f] != null) Input.runDir = opts.steer[f];
+        if (f === jumpFrame) Input.buffer.Jump = Input.bufferTime;   // arm a jump this frame
+        Player.update(Engine.fixedDt);
+        // Tick the jump buffer down like Input.update would (it's not in this loop).
+        for (const k in Input.buffer) {
+          Input.buffer[k] -= Engine.fixedDt;
+          if (Input.buffer[k] <= 0) delete Input.buffer[k];
+        }
+        if (f % sample === 0) {
+          trace.push({
+            f,
+            x: +Player.x.toFixed(2), y: +Player.y.toFixed(2),
+            vx: +Player.vx.toFixed(2), vy: +Player.vy.toFixed(2),
+            grounded: Player.grounded,
+            onSlope: !!Player.onSlope,
+            slopeDir: Player.slopeDir || 0,
+            momentum: +Player.momentum.toFixed(3),
+            overspeed: +((Player.overspeed || 0)).toFixed(3),
+          });
+        }
       }
+    } finally {
+      Audio.muted = saved.muted;
+      Input.runDir = saved.runDir;
+      Input.buffer = saved.buffer;
     }
-    Audio.muted = wasMuted;
-    window.Input = realInput;
     return { idx, frames, last: trace[trace.length - 1], trace };
   };
 })();
