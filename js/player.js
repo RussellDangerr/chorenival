@@ -82,6 +82,9 @@ const Player = {
   // real step, so flat ground never snags momentum but real walls still stop us.
   stepTolerance: 8,
 
+  slopeSnap: 8,           // px — stick distance to a slope surface (must exceed the
+                          // max per-frame horizontal step: overspeedCap/120 = 6px)
+
   // ── Unicycle visual (roll + momentum sway) ──
   wheelRadius: 8,
   cruiseLean: 0.10,       // rad — gentle lean into travel at full speed (~6°)
@@ -92,6 +95,8 @@ const Player = {
   grounded: false,
   wasGrounded: false,     // for coyote: only grant when walking off, not jumping off
   wallDir: 0,             // internal collision state (set in resolveCollisions)
+  onSlope: false,         // grounded on a slope this frame (set in resolveSlopes)
+  slopeDir: 0,            // sign of the slope under the feet (+1 rise-right)
   facing: 1,              // FIXED visual facing — Bozo always faces the same way
 
   // ── Unicycle run state ──
@@ -191,6 +196,8 @@ const Player = {
     this.wallStickTimer = 0;
     this.wallJumpLockTimer = 0;
     this.wallContactDir = 0;
+    this.onSlope = false;
+    this.slopeDir = 0;
     this.spinAttackTimer = 0;
     this.spinAttackDir = 0;
     this._spinCooldown = 0;
@@ -740,6 +747,42 @@ const Player = {
         this.grounded = true;
         this.vy = 0;
       }
+    }
+
+    // ── Slopes: seat the player on the diagonal surface (own pass) ──
+    this.resolveSlopes();
+  },
+
+  // Seat the player on a slope surface. Runs AFTER the square-tile passes;
+  // slope tiles are not in the square grid, so they never trigger wall logic.
+  resolveSlopes() {
+    const slopes = Level.getSlopesNear(this.x, this.y, this.w, this.h);
+    if (!slopes.length) { this.onSlope = false; this.slopeDir = 0; return; }
+
+    const footX = this.x + this.w / 2;
+    let best = null, bestTop = Infinity;
+    for (const sl of slopes) {
+      if (footX < sl.x || footX > sl.x + sl.w) continue;   // foot column over it
+      const top = Level.slopeSurfaceY(sl, footX);
+      if (top < bestTop) { bestTop = top; best = sl; }      // highest surface wins
+    }
+    if (!best) { this.onSlope = false; this.slopeDir = 0; return; }
+
+    const feetY = this.y + this.h;
+    // Clearly rising up through the surface from below → let the jump punch out.
+    if (this.vy < 0 && feetY < bestTop - 1) { this.onSlope = false; this.slopeDir = 0; return; }
+
+    // Within stick range (a little above the surface, or penetrating) → seat.
+    if (feetY >= bestTop - this.slopeSnap) {
+      this.y = bestTop - this.h;
+      if (this.vy > 0) this.vy = 0;
+      this.grounded = true;
+      this.groundMaterial = 'solid';
+      this.onSlope = true;
+      this.slopeDir = best.slopeDir;
+    } else {
+      this.onSlope = false;
+      this.slopeDir = 0;
     }
   },
 
