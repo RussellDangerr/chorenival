@@ -51,8 +51,15 @@ const Player = {
 
   // ── Jump tuning (fixed-height tap jump) ──
   jumpForce: -480,
+  jumpSpeedBonus: 380,       // px/s extra upward launch at full overspeed (≈ -860 total)
   gravityUp: 1300,           // gravity while rising (lighter, floaty arc)
   gravityDown: 2100,         // gravity while falling (1.6x — snappy descent)
+
+  // ── Slopes / overspeed (the downhill bomb that powers the big jump) ──
+  overspeedCap: 720,        // px/s — max |vx| reachable on a downhill (1.8x runSpeed)
+  slopeAccel: 800,          // px/s^2 — speed gained while bombing downhill
+  slopeUphillDrag: 600,     // px/s^2 — speed bled while climbing a slope
+  overspeedDecay: 500,      // px/s^2 — decay back to runSpeed on flat ground/air
 
   // ── Coyote time / jump buffer ──
   coyoteTime: 0.06,      // ~7 frames at 120Hz
@@ -82,6 +89,9 @@ const Player = {
   // real step, so flat ground never snags momentum but real walls still stop us.
   stepTolerance: 8,
 
+  slopeSnap: 8,           // px — stick distance to a slope surface (must exceed the
+                          // max per-frame horizontal step: overspeedCap/120 = 6px)
+
   // ── Unicycle visual (roll + momentum sway) ──
   wheelRadius: 8,
   cruiseLean: 0.10,       // rad — gentle lean into travel at full speed (~6°)
@@ -92,6 +102,8 @@ const Player = {
   grounded: false,
   wasGrounded: false,     // for coyote: only grant when walking off, not jumping off
   wallDir: 0,             // internal collision state (set in resolveCollisions)
+  onSlope: false,         // grounded on a slope this frame (set in resolveSlopes)
+  slopeDir: 0,            // sign of the slope under the feet (+1 rise-right)
   facing: 1,              // FIXED visual facing — Bozo always faces the same way
 
   // ── Unicycle run state ──
@@ -171,6 +183,13 @@ const Player = {
     return Math.min(1, Math.abs(this.vx) / this.runSpeed);
   },
 
+  // Overspeed (0..1+): speed banked ABOVE the normal cap by bombing a downhill.
+  // Separate from `momentum` (which stays clamped 0..1 for the HUD + attack
+  // threshold) — only the speed-jump reads this.
+  get overspeed() {
+    return Math.max(0, (Math.abs(this.vx) - this.runSpeed) / this.runSpeed);
+  },
+
   spawn(x, y) {
     this.x = x;
     this.y = y;
@@ -191,6 +210,8 @@ const Player = {
     this.wallStickTimer = 0;
     this.wallJumpLockTimer = 0;
     this.wallContactDir = 0;
+    this.onSlope = false;
+    this.slopeDir = 0;
     this.spinAttackTimer = 0;
     this.spinAttackDir = 0;
     this._spinCooldown = 0;
@@ -341,6 +362,27 @@ const Player = {
     // Treadmill: cap and damp speed toward 0.5, non-directional (only slows).
     if (onTreadmill && Math.abs(this.vx) > this.treadmillCap) {
       this.vx = approach(this.vx, Math.sign(this.vx) * this.treadmillCap, this.treadmillDamp * dt);
+    }
+
+    // ── Slope speed-transfer + perishable overspeed ──
+    // onSlope/slopeDir come from the previous frame's resolveSlopes (the same
+    // one-frame-late model grounded/wallDir use). Downhill builds speed past the
+    // cap; uphill bleeds; on flat/air any overspeed decays back to runSpeed.
+    // NOTE: the cruise driver above already nudges vx toward runSpeed every frame
+    // (~210 px/s^2 at the top), so the REALIZED rates here are offset by that:
+    // effective downhill build ≈ slopeAccel-210, effective flat decay ≈
+    // overspeedDecay+210. Keep that in mind when tuning these constants by feel.
+    if (this.grounded && this.onSlope && this.slopeDir !== 0 && Math.abs(this.vx) > this.zeroEpsilon) {
+      const sign = Math.sign(this.vx);
+      const goingDownhill = sign === -this.slopeDir;
+      if (goingDownhill) {
+        this.vx += sign * this.slopeAccel * dt;
+        if (Math.abs(this.vx) > this.overspeedCap) this.vx = sign * this.overspeedCap;
+      } else {
+        this.vx -= sign * this.slopeUphillDrag * dt;
+      }
+    } else if (Math.abs(this.vx) > this.runSpeed) {
+      this.vx = approach(this.vx, Math.sign(this.vx) * this.runSpeed, this.overspeedDecay * dt);
     }
 
     // ── Asymmetric gravity (floaty rise, snappy fall) ──
@@ -518,10 +560,18 @@ const Player = {
   },
 
   _doGroundJump() {
-    this.vy = this.jumpForce;
+    const denom = (this.overspeedCap - this.runSpeed) || 1;
+    const overFrac = Math.max(0, Math.min(1, (Math.abs(this.vx) - this.runSpeed) / denom));
+    this.vy = this.jumpForce - this.jumpSpeedBonus * overFrac;
+    if (overFrac > 0.4) {
+      this.squash = 1.5;
+      Camera.shake(3 + overFrac * 4);
+      this._carnivalSpray(this.travelDir);   // charged launch throws confetti
+    } else {
+      this.squash = 1.4;
+    }
     this.coyoteTimer = 0;
     this.grounded = false;
-    this.squash = 1.4;
     this.setAnim('jump');
     Audio.jump();
     Input.consumeJump();
@@ -740,6 +790,42 @@ const Player = {
         this.grounded = true;
         this.vy = 0;
       }
+    }
+
+    // ── Slopes: seat the player on the diagonal surface (own pass) ──
+    this.resolveSlopes();
+  },
+
+  // Seat the player on a slope surface. Runs AFTER the square-tile passes;
+  // slope tiles are not in the square grid, so they never trigger wall logic.
+  resolveSlopes() {
+    const slopes = Level.getSlopesNear(this.x, this.y, this.w, this.h);
+    if (!slopes.length) { this.onSlope = false; this.slopeDir = 0; return; }
+
+    const footX = this.x + this.w / 2;
+    let best = null, bestTop = Infinity;
+    for (const sl of slopes) {
+      if (footX < sl.x || footX > sl.x + sl.w) continue;   // foot column over it
+      const top = Level.slopeSurfaceY(sl, footX);
+      if (top < bestTop) { bestTop = top; best = sl; }      // highest surface wins
+    }
+    if (!best) { this.onSlope = false; this.slopeDir = 0; return; }
+
+    const feetY = this.y + this.h;
+    // Clearly rising up through the surface from below → let the jump punch out.
+    if (this.vy < 0 && feetY < bestTop - 1) { this.onSlope = false; this.slopeDir = 0; return; }
+
+    // Within stick range (a little above the surface, or penetrating) → seat.
+    if (feetY >= bestTop - this.slopeSnap) {
+      this.y = bestTop - this.h;
+      if (this.vy > 0) this.vy = 0;
+      this.grounded = true;
+      this.groundMaterial = 'solid';
+      this.onSlope = true;
+      this.slopeDir = best.slopeDir;
+    } else {
+      this.onSlope = false;
+      this.slopeDir = 0;
     }
   },
 

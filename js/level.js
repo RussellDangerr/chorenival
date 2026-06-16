@@ -11,6 +11,8 @@ const Level = {
   // 1 = solid, 0 = air, g = goal
   // c = checkpoint, o = collectible (gem)
   // T = treadmill (caps Bozo's speed at 0.5 and bleeds momentum)
+  // / = slope rising to the right, \ = slope rising to the left (45°)
+  //     (authoring: a literal backslash must be written \\ inside the JS strings)
 
   // Material definitions: only the colour matters here; physics live in Player.
   materials: {
@@ -35,13 +37,13 @@ const Level = {
       goalColor: [180, 140, 255],
       dotColor: 'rgba(140, 100, 220, 0.05)',
     },
-    puppet: {
-      name: 'The Workshop',
-      bg: ['#14100a', '#1e1810', '#281e14'],
-      tile: ['#3a2a1a', '#4a3828', '#5a4832'],
-      accent: 'rgba(120, 200, 180, 0.10)',
-      goalColor: [120, 200, 180],
-      dotColor: 'rgba(160, 140, 100, 0.05)',
+    midnight: {
+      name: 'The Big Drop',
+      bg: ['#0a0a1e', '#0e1230', '#1a1040'],
+      tile: ['#1a2348', '#243056', '#36487e'],
+      accent: 'rgba(255, 215, 120, 0.14)',
+      goalColor: [255, 215, 120],
+      dotColor: 'rgba(120, 150, 230, 0.06)',
     }
   },
 
@@ -91,60 +93,63 @@ const Level = {
       ]
     },
     {
-      name: 'The Stage',
+      name: 'The Catwalk',
       theme: 'harlequin',
       spawn: [3, 21],
       entities: [
-        { type: 'oneway', x: 15 * 32, y: 18 * 32, w: 96 },
+        // One-way ledge over the early patrol (ride over or drop to stomp).
+        { type: 'oneway', x: 14 * 32, y: 18 * 32, w: 96 },
         { type: 'patrol', x: 16 * 32, y: 22 * 32 - 20, range: 64, speed: 60 },
-        { type: 'patrol', x: 28 * 32, y: 22 * 32 - 20, range: 96, speed: 60 },
-        // Ferry across the wide gap.
-        { type: 'platform', x: 50 * 32, y: 22 * 32, w: 64, toX: 54 * 32, toY: 22 * 32, speed: 65 },
-        { type: 'patrol', x: 64 * 32, y: 22 * 32 - 20, range: 128, speed: 65 },
+        // Patrol pacing the treadmill.
+        { type: 'patrol', x: 33 * 32, y: 22 * 32 - 20, range: 96, speed: 60 },
+        // Ferry bridging the catwalk gap (rides at the catwalk surface, row 12).
+        { type: 'platform', x: 73 * 32, y: 12 * 32, w: 64, toX: 78 * 32, toY: 12 * 32, speed: 60 },
+        // Patrol on the far catwalk segment.
+        { type: 'patrol', x: 85 * 32, y: 12 * 32 - 20, range: 96, speed: 60 },
       ],
-      // 80 wide x 25 tall - two early pits, a long treadmill, then a ferry gap.
+      // 112 wide x 25 tall. Lower run (pits/treadmill/optional gem shaft) -> mandatory
+      // wall-jump shaft (cols 57-60: left wall rows 11-19 [one taller, so the top cling
+      // launches you RIGHT onto the catwalk], right wall full rows 12-21, gap 58-59) ->
+      // climb to the catwalk (row 12) -> ferry gap (73-79) -> goal
+      // (col 95). Floor cols 63-110 is a death-void, so the catwalk is the only way across.
       data: [
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '1000000000000000000000000000000000000000000000000000o000000000000000000000000001',
-        '10000o000000000000o000000000000000000000o000000000000000c0o00000000000o0000g0001',
-        '1111111111000011111111000011111111TTTTTTTTTTTT1111000000111111111111111111111111',
-        '11111111110000111111110000111111111111111111111111110000001111111111111111111111',
-        '11111111110000111111110000111111111111111111111111110000001111111111111111111111',
+        '1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000000000000000000001000000000o0000000000000000000000o0000g0000000000000001',
+        '1000000000000000000000000000000000000000000o00000000000001001111111111111000000011111111111111111000000000000001',
+        '1000000000000000000000000000000000000000001001000000000001001000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000001001000000000001o01000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000001001000000000001001000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000001001000000000001001000000000000000000000000000000000000000000000000001',
+        '10000000000000000000000000000000000000000010010000000000010o1000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000001001000000000001001000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000001001000000000001001000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000001',
+        '1000000o000000000000o0000000000000000000000000000000c00000001000000000000000000000000000000000000000000000000001',
+        '1111111111000011111111110000TTTTTTTTTTTT111111111111111111111110000000000000000000000000000000000000000000000001',
+        '1111111111000011111111110000TTTTTTTTTTTT111111111111111111111110000000000000000000000000000000000000000000000001',
+        '1111111111000011111111110000TTTTTTTTTTTT111111111111111111111110000000000000000000000000000000000000000000000001',
       ]
     },
     {
-      name: 'The Workshop',
-      theme: 'puppet',
-      spawn: [3, 21],
-      entities: [
-        // Two ferry gaps and a one-way perch over the mid patrol.
-        { type: 'platform', x: 31 * 32, y: 22 * 32, w: 64, toX: 34 * 32, toY: 22 * 32, speed: 70 },
-        { type: 'patrol', x: 13 * 32, y: 22 * 32 - 20, range: 96, speed: 65 },
-        { type: 'oneway', x: 37 * 32, y: 18 * 32, w: 96 },
-        { type: 'patrol', x: 38 * 32, y: 22 * 32 - 20, range: 96, speed: 65 },
-        { type: 'platform', x: 58 * 32, y: 22 * 32, w: 64, toX: 62 * 32, toY: 22 * 32, speed: 70 },
-        { type: 'patrol', x: 66 * 32, y: 22 * 32 - 20, range: 128, speed: 70 },
-      ],
-      // 80 wide x 25 tall - the hard track: tight pits, two treadmills, two ferries.
+      name: 'The Big Drop',
+      theme: 'midnight',
+      spawn: [3, 13],
+      tent: true,                    // goal IS the tent mouth (render + finale derive from the goal tile)
+      entities: [],
+      // 80 wide x 25 tall — generated (every row exactly 80 chars). Plateau intro
+      // (rows 14-24, cols 1-19) -> 8-tile downhill bomb '\' (20,14)->(27,21) ->
+      // 2-tile flat -> 2-tile up-kicker '/' (30,21)/(31,20) -> chasm cols 32-36 ->
+      // tent ledge (rows 14-24, cols 37-78) with goal at (59,13).
       data: [
         '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
         '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
@@ -157,20 +162,20 @@ const Level = {
         '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
         '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
         '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
+        '1000000000000000000000000000000000000000o000000000000000000000000000000000000001',
         '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '10000000000000000000000000000000000000000000000000000000000000000000000000000001',
-        '100000000000000000000000000000000o00000000000000000000000000o0000000000000000001',
-        '10000o0000000000o000000000000000000000o00000000000000c0o00000000000000o0000g0001',
-        '11111111000011111100000TTTTTTTTT0000011111111TTTTTTTTT11111000000111111111111111',
-        '11111111000011111100000111111111000001111111111111111111110000001111111111111111',
-        '11111111000011111100000111111111000001111111111111111111110000001111111111111111',
+        '10000000000000000000000000000000000000000000000000000000000g00000000000000000001',
+        '11111111111111111111\\00000000000000001111111111111111111111111111111111111111111',
+        '111111111111111111110\\0000000000000001111111111111111111111111111111111111111111',
+        '1111111111111111111100\\000000000000001111111111111111111111111111111111111111111',
+        '11111111111111111111000\\00000000000001111111111111111111111111111111111111111111',
+        '111111111111111111110000\\0000000000001111111111111111111111111111111111111111111',
+        '1111111111111111111100000\\000000000001111111111111111111111111111111111111111111',
+        '11111111111111111111000000\\0o00/000001111111111111111111111111111111111111111111',
+        '111111111111111111110000000\\00/0000001111111111111111111111111111111111111111111',
+        '11111111111111111111111111111111000001111111111111111111111111111111111111111111',
+        '11111111111111111111111111111111000001111111111111111111111111111111111111111111',
+        '11111111111111111111111111111111000001111111111111111111111111111111111111111111',
       ]
     }
   ],
@@ -204,6 +209,9 @@ const Level = {
           this.tiles.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, type: 'solid', material: 'solid' });
         } else if (materialMap[ch]) {
           this.tiles.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, type: 'solid', material: materialMap[ch] });
+        } else if (ch === '/' || ch === '\\') {
+          const slopeDir = ch === '/' ? 1 : -1;
+          this.tiles.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, type: 'slope', slopeDir });
         } else if (ch === 'g') {
           this.tiles.push({ x: tx, y: ty, w: this.tileSize, h: this.tileSize, type: 'goal' });
         } else if (ch === 'c') {
@@ -227,6 +235,15 @@ const Level = {
       this._tileGrid[key] = tile;
     }
 
+    // Slopes live in their own grid — kept OUT of _tileGrid so the square-tile
+    // X/Y passes never treat a slope's bounding box as a wall/floor.
+    this._slopeGrid = {};
+    for (const tile of this.tiles) {
+      if (tile.type !== 'slope') continue;
+      const key = Math.floor(tile.x / this.tileSize) + ',' + Math.floor(tile.y / this.tileSize);
+      this._slopeGrid[key] = tile;
+    }
+
     // Build solid grid for edge detection in rendering
     this.gridRows = data.length;
     this.gridCols = data[0].length;
@@ -235,7 +252,7 @@ const Level = {
       this.solidGrid[row] = [];
       for (let col = 0; col < data[row].length; col++) {
         const ch = data[row][col];
-        this.solidGrid[row][col] = (ch === '1' || !!materialMap[ch]);
+        this.solidGrid[row][col] = (ch === '1' || !!materialMap[ch] || ch === '/' || ch === '\\');
       }
     }
 
@@ -261,6 +278,30 @@ const Level = {
       for (let gx = x1; gx <= x2; gx++) {
         const tile = this._tileGrid[gx + ',' + gy];
         if (tile && !tile.broken) result.push(tile);
+      }
+    }
+    return result;
+  },
+
+  // Surface (top) Y of a slope tile at a world X. Linear for 45°.
+  //   '/' (slopeDir +1): low at the left edge, high at the right.
+  //   '\' (slopeDir -1): high at the left edge, low at the right.
+  slopeSurfaceY(tile, worldX) {
+    const s = this.tileSize;
+    const localX = Math.max(0, Math.min(s, worldX - tile.x));
+    return tile.slopeDir > 0 ? tile.y + (s - localX) : tile.y + localX;
+  },
+
+  getSlopesNear(px, py, pw, ph) {
+    if (!this._slopeGrid) return [];
+    const s = this.tileSize;
+    const x1 = Math.floor((px - s) / s), x2 = Math.floor((px + pw + s) / s);
+    const y1 = Math.floor((py - s) / s), y2 = Math.floor((py + ph + s) / s);
+    const result = [];
+    for (let gy = y1; gy <= y2; gy++) {
+      for (let gx = x1; gx <= x2; gx++) {
+        const t = this._slopeGrid[gx + ',' + gy];
+        if (t) result.push(t);
       }
     }
     return result;
@@ -398,6 +439,45 @@ const Level = {
     const viewT = Camera.y - 32;
     const viewB = Camera.y + Engine.height + 32;
 
+    // ── Circus tent set-piece (Big Drop finale) ──
+    // Single source of truth: the tent is drawn around the GOAL tile, so the
+    // mouth and the win hitbox can never drift apart.
+    const goal0 = this.maps[this.currentMap].tent && this._cachedGoals && this._cachedGoals[0];
+    if (goal0) {
+      const s = this.tileSize;
+      const mouthX = goal0.x + goal0.w / 2;        // centre on the goal column
+      const baseY = goal0.y + s;                   // tent sits on the goal row's floor
+      const tw = s * 6, th = s * 5;                // tent footprint
+      const left = mouthX - tw / 2;
+      const peakY = baseY - th;
+      // Striped canopy (triangle fan from the peak)
+      const stripes = 6;
+      for (let i = 0; i < stripes; i++) {
+        ctx.fillStyle = (i % 2 === 0) ? Tokens.color.tentRed : Tokens.color.tentCream;
+        ctx.beginPath();
+        ctx.moveTo(mouthX, peakY);
+        ctx.lineTo(left + (tw * i) / stripes, baseY);
+        ctx.lineTo(left + (tw * (i + 1)) / stripes, baseY);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Flag pole + pennant at the peak
+      ctx.strokeStyle = Tokens.color.frame; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(mouthX, peakY); ctx.lineTo(mouthX, peakY - 18); ctx.stroke();
+      ctx.fillStyle = Tokens.color.tentRed;
+      ctx.beginPath(); ctx.moveTo(mouthX, peakY - 18); ctx.lineTo(mouthX + 14, peakY - 13); ctx.lineTo(mouthX, peakY - 8); ctx.closePath(); ctx.fill();
+      // Dark mouth (the goal sits here)
+      const mw = s * 1.4, mh = s * 1.8;
+      ctx.fillStyle = Tokens.color.tentMouth;
+      ctx.beginPath();
+      ctx.moveTo(mouthX - mw / 2, baseY);
+      ctx.lineTo(mouthX - mw / 2, baseY - mh * 0.6);
+      ctx.quadraticCurveTo(mouthX, baseY - mh, mouthX + mw / 2, baseY - mh * 0.6);
+      ctx.lineTo(mouthX + mw / 2, baseY);
+      ctx.closePath(); ctx.fill();
+      ctx.lineWidth = 1;
+    }
+
     for (const tile of this.tiles) {
       // Skip tiles outside viewport
       if (tile.x + tile.w < viewL || tile.x > viewR || tile.y + tile.h < viewT || tile.y > viewB) continue;
@@ -457,6 +537,31 @@ const Level = {
         ctx.strokeStyle = `rgba(${gc[0]}, ${gc[1]}, ${gc[2]}, ${0.5 + pulse * 0.3})`;
         ctx.lineWidth = 1;
         ctx.strokeRect(tile.x + 2, tile.y + 2, tile.w - 4, tile.h - 4);
+      } else if (tile.type === 'slope') {
+        const s = this.tileSize;
+        // Solid region is BELOW the hypotenuse: lower-right triangle for '/',
+        // lower-left for '\'.
+        ctx.fillStyle = theme.tile[1];
+        ctx.beginPath();
+        if (tile.slopeDir > 0) {                 // '/'  low-left, high-right
+          ctx.moveTo(tile.x, tile.y + s);
+          ctx.lineTo(tile.x + s, tile.y);
+          ctx.lineTo(tile.x + s, tile.y + s);
+        } else {                                 // '\'  high-left, low-right
+          ctx.moveTo(tile.x, tile.y);
+          ctx.lineTo(tile.x, tile.y + s);
+          ctx.lineTo(tile.x + s, tile.y + s);
+        }
+        ctx.closePath();
+        ctx.fill();
+        // Exposed-edge highlight along the hypotenuse (the ridable surface).
+        ctx.strokeStyle = theme.tile[2];
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        if (tile.slopeDir > 0) { ctx.moveTo(tile.x, tile.y + s); ctx.lineTo(tile.x + s, tile.y); }
+        else { ctx.moveTo(tile.x, tile.y); ctx.lineTo(tile.x + s, tile.y + s); }
+        ctx.stroke();
+        ctx.lineWidth = 1;
       }
     }
 

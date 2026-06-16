@@ -25,6 +25,7 @@ const Tokens = {
     gold:       [255, 215, 100], // primary accent: prompts, goal, win text
     goldBright: '#ffd764',       // win title fill
     goldFlag:   [255, 215, 50],  // checkpoint flag + checkpoint burst
+    charged:    [255, 240, 150], // overspeed "charged" tell (speedometer + launch spray)
 
     // ── Feedback ──
     danger:   [255, 80, 80],    // death, death-counter
@@ -55,6 +56,9 @@ const Tokens = {
     white:     [255, 255, 255],
     belt:      [150, 210, 255],                 // treadmill chevrons + belt dust
     treadmill: ['#2a3a4a', '#34495e', '#46627e'], // treadmill tile [dark, mid, light]
+    tentRed:   '#b5202a',  // circus tent stripe (red)
+    tentCream: '#f3e2b8',  // circus tent stripe (cream)
+    tentMouth: '#140a16',  // dark tent entrance
   },
 
   // ── Typography ── one family, a fixed scale (the game is all monospace) ──

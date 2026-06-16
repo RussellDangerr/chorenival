@@ -5,6 +5,8 @@ const Game = {
   state: 'title',
   timer: 0,
   levelTimer: 0,
+  tentTimer: 0,
+  _tentMouth: null,
   currentLevel: 0,
   totalLevels: 0,
   transitionAlpha: 0,
@@ -130,6 +132,7 @@ const Game = {
     else if (this.state === 'levelSelect') this.updateLevelSelect(dt);
     else if (this.state === 'playing') this.updatePlaying(dt);
     else if (this.state === 'levelComplete') this.updateLevelComplete(dt);
+    else if (this.state === 'tentFinale') this.updateTentFinale(dt);
     else if (this.state === 'paused') this.updatePaused(dt);
     else if (this.state === 'win') this.updateWin(dt);
   },
@@ -249,6 +252,22 @@ const Game = {
         }
         this.writeSave();
 
+        if (Level.maps[this.currentLevel].tent) {
+          // Cinematic finale: confetti swallow, then level complete.
+          this.tentTimer = 0;
+          this._tentMouth = { x: g.x + g.w / 2, y: g.y + g.h / 2 };
+          Engine.hitstop(0.08);
+          Camera.shake(6);
+          for (let i = 0; i < 40; i++) {
+            const a = Math.random() * Math.PI * 2, sp = 80 + Math.random() * 180;
+            Particles.emit(this._tentMouth.x, this._tentMouth.y, Math.cos(a) * sp, Math.sin(a) * sp,
+              Tokens.color.carnival[i % Tokens.color.carnival.length], 0.6 + Math.random() * 0.4, 4.5);
+          }
+          this.state = 'tentFinale';
+          this.timer = 0;
+          return;
+        }
+
         this.state = 'levelComplete';
         this.timer = 0;
         return;
@@ -289,6 +308,32 @@ const Game = {
     }
   },
 
+  // ── TENT FINALE (cinematic) ──
+  updateTentFinale(dt) {
+    this.tentTimer += dt;
+    // Keep raining confetti from the mouth for the first beat.
+    if (this._tentMouth && this.tentTimer < 0.6 && Math.random() < 0.6) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.6, sp = 60 + Math.random() * 160;
+      Particles.emit(this._tentMouth.x, this._tentMouth.y, Math.cos(a) * sp, Math.sin(a) * sp,
+        Tokens.color.carnival[(Math.random() * 5) | 0], 0.5 + Math.random() * 0.4, 4.5);
+    }
+    // After the flourish, hand off to the normal complete screen.
+    if (this.tentTimer >= 1.3) {
+      this.state = 'levelComplete';
+      this.timer = 0;
+    }
+  },
+
+  drawTentFinale(ctx) {
+    this.drawHUD(ctx);
+    const a = Math.min(1, this.tentTimer * 2);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = Tokens.rgba(Tokens.color.charged, a * 0.9);
+    ctx.font = Tokens.font.heading;
+    ctx.fillText('INTO THE BIG TOP!', Engine.width / 2, Engine.height / 2 - 10);
+    ctx.textAlign = 'left';
+  },
+
   // ── PAUSED ──
   updatePaused(dt) {
     if (Input.pressed('Escape') || Input.pressed('KeyP')) {
@@ -327,6 +372,7 @@ const Game = {
     else if (this.state === 'levelSelect') this.drawLevelSelect(ctx);
     else if (this.state === 'playing') this.drawHUD(ctx);
     else if (this.state === 'levelComplete') this.drawLevelComplete(ctx);
+    else if (this.state === 'tentFinale') this.drawTentFinale(ctx);
     else if (this.state === 'paused') { this.drawHUD(ctx); this.drawPause(ctx); }
     else if (this.state === 'win') this.drawWin(ctx);
 
@@ -558,6 +604,13 @@ const Game = {
     const gc = Level.getTheme().goalColor;
     ctx.fillStyle = ready ? `rgba(${gc[0]},${gc[1]},${gc[2]},0.9)` : Tokens.rgba(Tokens.color.dust, 0.5);
     ctx.fillRect(x, y, w * m, h);
+    // Overspeed "charged" overlay: a gold sliver past full while banking speed.
+    const over = Math.max(0, Math.min(1, Player.overspeed));
+    if (over > 0) {
+      ctx.fillStyle = Tokens.rgba(Tokens.color.charged, 0.85);
+      ctx.fillRect(x, y - 2, w, 2);                 // gold cap line = "charged!"
+      ctx.fillRect(x + w, y - 1, 6 * over, h + 2);  // a nub past the end of the bar
+    }
     // half-speed threshold tick
     ctx.fillStyle = Tokens.rgba(Tokens.color.white, 0.55);
     ctx.fillRect(x + w * 0.5 - 1, y - 3, 2, h + 6);

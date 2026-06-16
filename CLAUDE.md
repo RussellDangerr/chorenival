@@ -23,9 +23,13 @@ in a browser to run; deployed live at clowncity.russelldangerr.com (main → Clo
   with a velocity-driven `lean`/`wheelAngle` sway; purely visual, hitbox unchanged.
 - `js/input.js` — keyboard + **touch (swipe = steer via sticky `runDir`, tap = jump)**,
   `jumpBuffered()/consumeJump()`, plus `tapped()/swipeEdge()` for menu nav.
-- `js/level.js` — tile maps (3 lean tracks), materials (`solid`, `treadmill`),
-  themes, rendering. Tile legend: `1` solid, `0` air, `T` treadmill, `g` goal,
-  `c` checkpoint, `o` gem. Maps are 80×25; floor on rows 22–24, spawn `[3,21]`.
+- `js/level.js` — 3 levels: **The Big Top** (circus, 80 wide — the original intro),
+  **The Catwalk** (harlequin, 112 wide — merged Stage+Workshop; mandatory + optional
+  wall-jump shafts, elevated catwalk over a death-void with a ferry), **The Big Drop**
+  (midnight, 80 wide — rideable slopes / downhill overspeed / speed-jump → tent finale).
+  Materials (`solid`, `treadmill`), themes, rendering. Tile legend: `1` solid, `0` air,
+  `T` treadmill, `g` goal, `c` checkpoint, `o` gem, `/` `\` slopes (rise right / rise
+  left, 45°). All maps 25 rows tall; floor on rows 22–24, spawn `[3,21]`.
 - `js/entities.js` — `MovingPlatform`, `OneWayPlatform`, `PatrolEnemy`, `Entities.kill()`.
 - `js/game.js` — state machine (title/levelSelect/playing/levelComplete/paused/win), HUD/menus.
 - `js/camera.js` — follow + lookahead keyed to `travelDir`.
@@ -43,6 +47,9 @@ in a browser to run; deployed live at clowncity.russelldangerr.com (main → Clo
 `pauseAtZeroTime`, `treadmillCap` (150), `brakeWindow` (0.18), `jumpForce` (-480).
 Collision/feel: `stepTolerance` (8, the flat-ground snag guard). Unicycle sway:
 `cruiseLean` (0.10), `brakeLean` (0.14), `leanRate` (10), `wheelRadius` (8).
+Slopes / banked overspeed (Big Drop): `overspeedCap` (720), `slopeAccel` (800),
+`slopeUphillDrag` (600), `overspeedDecay` (500), `jumpSpeedBonus` (380, scales the
+launch from −480 cruise to ≈−860 at full overspeed), `slopeSnap` (8).
 
 ## Verifying changes
 No tests. Run `index.html` (e.g. `py -m http.server 8080 --directory .`) and play,
@@ -51,5 +58,5 @@ and reading `Player`/`Entities` state.
 
 ## Out of scope / follow-ups
 - Real sprite art (the player is a procedural unicycle now; no spritesheet). On-screen
-  touch **pause** button. Level 2/3 feel tuning. The lone non-bold `20px` LOCKED font
-  label (flagged in the audit).
+  touch **pause** button. The lone non-bold `20px` LOCKED font label (flagged in the
+  audit).
