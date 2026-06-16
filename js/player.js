@@ -54,6 +54,12 @@ const Player = {
   gravityUp: 1300,           // gravity while rising (lighter, floaty arc)
   gravityDown: 2100,         // gravity while falling (1.6x — snappy descent)
 
+  // ── Slopes / overspeed (the downhill bomb that powers the big jump) ──
+  overspeedCap: 720,        // px/s — max |vx| reachable on a downhill (1.8x runSpeed)
+  slopeAccel: 800,          // px/s^2 — speed gained while bombing downhill
+  slopeUphillDrag: 600,     // px/s^2 — speed bled while climbing a slope
+  overspeedDecay: 500,      // px/s^2 — decay back to runSpeed on flat ground/air
+
   // ── Coyote time / jump buffer ──
   coyoteTime: 0.06,      // ~7 frames at 120Hz
   coyoteTimer: 0,
@@ -174,6 +180,13 @@ const Player = {
   // the spin-out attack threshold, and the wall climb.
   get momentum() {
     return Math.min(1, Math.abs(this.vx) / this.runSpeed);
+  },
+
+  // Overspeed (0..1+): speed banked ABOVE the normal cap by bombing a downhill.
+  // Separate from `momentum` (which stays clamped 0..1 for the HUD + attack
+  // threshold) — only the speed-jump reads this.
+  get overspeed() {
+    return Math.max(0, (Math.abs(this.vx) - this.runSpeed) / this.runSpeed);
   },
 
   spawn(x, y) {
@@ -348,6 +361,23 @@ const Player = {
     // Treadmill: cap and damp speed toward 0.5, non-directional (only slows).
     if (onTreadmill && Math.abs(this.vx) > this.treadmillCap) {
       this.vx = approach(this.vx, Math.sign(this.vx) * this.treadmillCap, this.treadmillDamp * dt);
+    }
+
+    // ── Slope speed-transfer + perishable overspeed ──
+    // onSlope/slopeDir come from the previous frame's resolveSlopes (the same
+    // one-frame-late model grounded/wallDir use). Downhill builds speed past the
+    // cap; uphill bleeds; on flat/air any overspeed decays back to runSpeed.
+    if (this.grounded && this.onSlope && this.slopeDir !== 0 && Math.abs(this.vx) > this.zeroEpsilon) {
+      const sign = Math.sign(this.vx);
+      const goingDownhill = sign === -this.slopeDir;
+      if (goingDownhill) {
+        this.vx += sign * this.slopeAccel * dt;
+        if (Math.abs(this.vx) > this.overspeedCap) this.vx = sign * this.overspeedCap;
+      } else {
+        this.vx -= sign * this.slopeUphillDrag * dt;
+      }
+    } else if (Math.abs(this.vx) > this.runSpeed) {
+      this.vx = approach(this.vx, Math.sign(this.vx) * this.runSpeed, this.overspeedDecay * dt);
     }
 
     // ── Asymmetric gravity (floaty rise, snappy fall) ──
