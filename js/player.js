@@ -559,9 +559,15 @@ const Player = {
     const denom = (this.overspeedCap - this.runSpeed) || 1;
     const overFrac = Math.max(0, Math.min(1, (Math.abs(this.vx) - this.runSpeed) / denom));
     this.vy = this.jumpForce - this.jumpSpeedBonus * overFrac;
+    if (overFrac > 0.4) {
+      this.squash = 1.5;
+      Camera.shake(3 + overFrac * 4);
+      this._carnivalSpray(this.travelDir);   // charged launch throws confetti
+    } else {
+      this.squash = 1.4;
+    }
     this.coyoteTimer = 0;
     this.grounded = false;
-    this.squash = 1.4;
     this.setAnim('jump');
     Audio.jump();
     Input.consumeJump();

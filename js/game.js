@@ -558,6 +558,13 @@ const Game = {
     const gc = Level.getTheme().goalColor;
     ctx.fillStyle = ready ? `rgba(${gc[0]},${gc[1]},${gc[2]},0.9)` : Tokens.rgba(Tokens.color.dust, 0.5);
     ctx.fillRect(x, y, w * m, h);
+    // Overspeed "charged" overlay: a gold sliver past full while banking speed.
+    const over = Math.max(0, Math.min(1, Player.overspeed));
+    if (over > 0) {
+      ctx.fillStyle = Tokens.rgba(Tokens.color.charged, 0.85);
+      ctx.fillRect(x, y - 2, w, 2);                 // gold cap line = "charged!"
+      ctx.fillRect(x + w, y - 1, 6 * over, h + 2);  // a nub past the end of the bar
+    }
     // half-speed threshold tick
     ctx.fillStyle = Tokens.rgba(Tokens.color.white, 0.55);
     ctx.fillRect(x + w * 0.5 - 1, y - 3, 2, h + 6);

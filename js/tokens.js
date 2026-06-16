@@ -25,6 +25,7 @@ const Tokens = {
     gold:       [255, 215, 100], // primary accent: prompts, goal, win text
     goldBright: '#ffd764',       // win title fill
     goldFlag:   [255, 215, 50],  // checkpoint flag + checkpoint burst
+    charged:    [255, 240, 150], // overspeed "charged" tell (speedometer + launch spray)
 
     // ── Feedback ──
     danger:   [255, 80, 80],    // death, death-counter
