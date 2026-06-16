@@ -25,7 +25,8 @@ in a browser to run; deployed live at clowncity.russelldangerr.com (main → Clo
   `jumpBuffered()/consumeJump()`, plus `tapped()/swipeEdge()` for menu nav.
 - `js/level.js` — tile maps (3 lean tracks), materials (`solid`, `treadmill`),
   themes, rendering. Tile legend: `1` solid, `0` air, `T` treadmill, `g` goal,
-  `c` checkpoint, `o` gem. Maps are 80×25; floor on rows 22–24, spawn `[3,21]`.
+  `c` checkpoint, `o` gem, `/` `\` slopes (rise right / rise left, 45°). Maps are
+  80×25; floor on rows 22–24, spawn `[3,21]`.
 - `js/entities.js` — `MovingPlatform`, `OneWayPlatform`, `PatrolEnemy`, `Entities.kill()`.
 - `js/game.js` — state machine (title/levelSelect/playing/levelComplete/paused/win), HUD/menus.
 - `js/camera.js` — follow + lookahead keyed to `travelDir`.
@@ -43,6 +44,9 @@ in a browser to run; deployed live at clowncity.russelldangerr.com (main → Clo
 `pauseAtZeroTime`, `treadmillCap` (150), `brakeWindow` (0.18), `jumpForce` (-480).
 Collision/feel: `stepTolerance` (8, the flat-ground snag guard). Unicycle sway:
 `cruiseLean` (0.10), `brakeLean` (0.14), `leanRate` (10), `wheelRadius` (8).
+Slopes / banked overspeed (Big Drop): `overspeedCap` (720), `slopeAccel` (800),
+`slopeUphillDrag` (600), `overspeedDecay` (500), `jumpSpeedBonus` (380, scales the
+launch from −480 cruise to ≈−860 at full overspeed), `slopeSnap` (8).
 
 ## Verifying changes
 No tests. Run `index.html` (e.g. `py -m http.server 8080 --directory .`) and play,
