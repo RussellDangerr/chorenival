@@ -368,6 +368,10 @@ const Player = {
     // onSlope/slopeDir come from the previous frame's resolveSlopes (the same
     // one-frame-late model grounded/wallDir use). Downhill builds speed past the
     // cap; uphill bleeds; on flat/air any overspeed decays back to runSpeed.
+    // NOTE: the cruise driver above already nudges vx toward runSpeed every frame
+    // (~210 px/s^2 at the top), so the REALIZED rates here are offset by that:
+    // effective downhill build ≈ slopeAccel-210, effective flat decay ≈
+    // overspeedDecay+210. Keep that in mind when tuning these constants by feel.
     if (this.grounded && this.onSlope && this.slopeDir !== 0 && Math.abs(this.vx) > this.zeroEpsilon) {
       const sign = Math.sign(this.vx);
       const goingDownhill = sign === -this.slopeDir;
