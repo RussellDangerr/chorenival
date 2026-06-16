@@ -51,6 +51,7 @@ const Player = {
 
   // ── Jump tuning (fixed-height tap jump) ──
   jumpForce: -480,
+  jumpSpeedBonus: 380,       // px/s extra upward launch at full overspeed (≈ -860 total)
   gravityUp: 1300,           // gravity while rising (lighter, floaty arc)
   gravityDown: 2100,         // gravity while falling (1.6x — snappy descent)
 
@@ -555,7 +556,9 @@ const Player = {
   },
 
   _doGroundJump() {
-    this.vy = this.jumpForce;
+    const denom = (this.overspeedCap - this.runSpeed) || 1;
+    const overFrac = Math.max(0, Math.min(1, (Math.abs(this.vx) - this.runSpeed) / denom));
+    this.vy = this.jumpForce - this.jumpSpeedBonus * overFrac;
     this.coyoteTimer = 0;
     this.grounded = false;
     this.squash = 1.4;
