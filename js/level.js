@@ -482,6 +482,45 @@ const Level = {
     const viewT = Camera.y - 32;
     const viewB = Camera.y + Engine.height + 32;
 
+    // ── Circus tent set-piece (Big Drop finale) ──
+    // Single source of truth: the tent is drawn around the GOAL tile, so the
+    // mouth and the win hitbox can never drift apart.
+    const goal0 = this.maps[this.currentMap].tent && this._cachedGoals && this._cachedGoals[0];
+    if (goal0) {
+      const s = this.tileSize;
+      const mouthX = goal0.x + goal0.w / 2;        // centre on the goal column
+      const baseY = goal0.y + s;                   // tent sits on the goal row's floor
+      const tw = s * 6, th = s * 5;                // tent footprint
+      const left = mouthX - tw / 2, right = mouthX + tw / 2;
+      const peakY = baseY - th;
+      // Striped canopy (triangle fan from the peak)
+      const stripes = 6;
+      for (let i = 0; i < stripes; i++) {
+        ctx.fillStyle = (i % 2 === 0) ? Tokens.color.tentRed : Tokens.color.tentCream;
+        ctx.beginPath();
+        ctx.moveTo(mouthX, peakY);
+        ctx.lineTo(left + (tw * i) / stripes, baseY);
+        ctx.lineTo(left + (tw * (i + 1)) / stripes, baseY);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Flag pole + pennant at the peak
+      ctx.strokeStyle = Tokens.color.frame; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(mouthX, peakY); ctx.lineTo(mouthX, peakY - 18); ctx.stroke();
+      ctx.fillStyle = Tokens.color.tentRed;
+      ctx.beginPath(); ctx.moveTo(mouthX, peakY - 18); ctx.lineTo(mouthX + 14, peakY - 13); ctx.lineTo(mouthX, peakY - 8); ctx.closePath(); ctx.fill();
+      // Dark mouth (the goal sits here)
+      const mw = s * 1.4, mh = s * 1.8;
+      ctx.fillStyle = Tokens.color.tentMouth;
+      ctx.beginPath();
+      ctx.moveTo(mouthX - mw / 2, baseY);
+      ctx.lineTo(mouthX - mw / 2, baseY - mh * 0.6);
+      ctx.quadraticCurveTo(mouthX, baseY - mh, mouthX + mw / 2, baseY - mh * 0.6);
+      ctx.lineTo(mouthX + mw / 2, baseY);
+      ctx.closePath(); ctx.fill();
+      ctx.lineWidth = 1;
+    }
+
     for (const tile of this.tiles) {
       // Skip tiles outside viewport
       if (tile.x + tile.w < viewL || tile.x > viewR || tile.y + tile.h < viewT || tile.y > viewB) continue;
