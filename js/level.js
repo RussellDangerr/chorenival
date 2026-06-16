@@ -495,6 +495,31 @@ const Level = {
         ctx.strokeStyle = `rgba(${gc[0]}, ${gc[1]}, ${gc[2]}, ${0.5 + pulse * 0.3})`;
         ctx.lineWidth = 1;
         ctx.strokeRect(tile.x + 2, tile.y + 2, tile.w - 4, tile.h - 4);
+      } else if (tile.type === 'slope') {
+        const s = this.tileSize;
+        // Solid region is BELOW the hypotenuse: lower-right triangle for '/',
+        // lower-left for '\'.
+        ctx.fillStyle = theme.tile[1];
+        ctx.beginPath();
+        if (tile.slopeDir > 0) {                 // '/'  low-left, high-right
+          ctx.moveTo(tile.x, tile.y + s);
+          ctx.lineTo(tile.x + s, tile.y);
+          ctx.lineTo(tile.x + s, tile.y + s);
+        } else {                                 // '\'  high-left, low-right
+          ctx.moveTo(tile.x, tile.y);
+          ctx.lineTo(tile.x, tile.y + s);
+          ctx.lineTo(tile.x + s, tile.y + s);
+        }
+        ctx.closePath();
+        ctx.fill();
+        // Exposed-edge highlight along the hypotenuse (the ridable surface).
+        ctx.strokeStyle = theme.tile[2];
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        if (tile.slopeDir > 0) { ctx.moveTo(tile.x, tile.y + s); ctx.lineTo(tile.x + s, tile.y); }
+        else { ctx.moveTo(tile.x, tile.y); ctx.lineTo(tile.x + s, tile.y + s); }
+        ctx.stroke();
+        ctx.lineWidth = 1;
       }
     }
 
