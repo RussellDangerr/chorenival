@@ -36,6 +36,8 @@
     Input.buffer = {};
     Input.runDir = opts.runDir != null ? opts.runDir : 0;
     const jumpFrame = opts.jumpFrame != null ? opts.jumpFrame : -1;
+    const jumpSet = new Set(opts.jumpFrames || []);
+    if (jumpFrame >= 0) jumpSet.add(jumpFrame);
 
     const s = Level.tileSize;
     const px = opts.x != null ? opts.x : map.spawn[0] * s;
@@ -50,7 +52,7 @@
     try {
       for (let f = 0; f < frames; f++) {
         if (opts.steer && opts.steer[f] != null) Input.runDir = opts.steer[f];
-        if (f === jumpFrame) Input.buffer.Jump = Input.bufferTime;   // arm a jump this frame
+        if (jumpSet.has(f)) Input.buffer.Jump = Input.bufferTime;   // arm a jump this frame
         Player.update(Engine.fixedDt);
         // Tick the jump buffer down like Input.update would (it's not in this loop).
         for (const k in Input.buffer) {
