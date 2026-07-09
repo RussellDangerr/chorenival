@@ -10,7 +10,9 @@ in a browser to run; deployed live at clowncity.russelldangerr.com (main → Clo
   then `engine.js`, …, `game.js` last.
 - `Engine` (engine.js): fixed-timestep loop at 120 Hz; registered systems each
   expose `update(dt)` / `draw(ctx)`. **`Input` is registered LAST** so its
-  single-frame flag clear runs after all consumers read them.
+  single-frame flag clear runs after all consumers read them. **`Input` is a
+  top-level `const`, NOT a window property** — `window.Input = fake` is a no-op
+  in any harness; mutate `Input.runDir` / `Input.buffer` directly.
 - Fixed internal canvas 960×540, CSS-scaled to fit.
 
 ## Key files
@@ -18,7 +20,11 @@ in a browser to run; deployed live at clowncity.russelldangerr.com (main → Clo
   `approach()` helper, brake-kick + stomp combat in `checkHazards()`/`getAttackRect()`.
   `facing` is frozen (always faces one way); `travelDir` is the real direction.
   `resolveCollisions()` X-pass uses a **`stepTolerance` guard** (`overlapY > 8`) so flat
-  floor seams aren't misread as walls — that was snagging momentum. The player draws as
+  floor seams aren't misread as walls — that was snagging momentum. Slope tiles live in
+  `Level._slopeGrid` (excluded from `_tileGrid`); `Player.resolveSlopes()` runs AFTER the
+  square-tile passes so `stepTolerance` is never triggered by slopes. `Player.momentum` is
+  clamped 0..1 (HUD/attack); `Player.overspeed` is a separate getter (0 at cruise, grows
+  above it) feeding only the speed-scaled jump — keep these separate. The player draws as
   a **procedural unicycle** in `_drawRectFallback()` (spinning wheel + frame + body),
   with a velocity-driven `lean`/`wheelAngle` sway; purely visual, hitbox unchanged.
 - `js/input.js` — keyboard + **touch (swipe = steer via sticky `runDir`, tap = jump)**,
@@ -31,7 +37,10 @@ in a browser to run; deployed live at clowncity.russelldangerr.com (main → Clo
   `T` treadmill, `g` goal, `c` checkpoint, `o` gem, `/` `\` slopes (rise right / rise
   left, 45°). All maps 25 rows tall; floor on rows 22–24, spawn `[3,21]`.
 - `js/entities.js` — `MovingPlatform`, `OneWayPlatform`, `PatrolEnemy`, `Entities.kill()`.
-- `js/game.js` — state machine (title/levelSelect/playing/levelComplete/paused/win), HUD/menus.
+- `js/game.js` — state machine (title/levelSelect/playing/levelComplete/paused/win/tentFinale),
+  HUD/menus. Level count is dynamic: `Game.totalLevels = Level.maps.length` — don't hardcode.
+  `tent: true` on a `Level.maps` entry triggers the tent set-piece + `tentFinale` win state
+  (derived from `_cachedGoals[0]`).
 - `js/camera.js` — follow + lookahead keyed to `travelDir`.
 - `js/tokens.js` — **design tokens** (color/font/space/motion + `rgba()`); single
   source of truth for the visual language. Audit + reference in `DESIGN-SYSTEM.md`.
@@ -53,8 +62,10 @@ launch from −480 cruise to ≈−860 at full overspeed), `slopeSnap` (8).
 
 ## Verifying changes
 No tests. Run `index.html` (e.g. `py -m http.server 8080 --directory .`) and play,
-or drive the sim headlessly by stepping `Engine.systems[*].update(Engine.fixedDt)`
-and reading `Player`/`Entities` state.
+or use `verify/sim.js` — a headless harness that halts the RAF loop and drives
+`Player.update` directly. Set `Input.runDir` and arm `Input.buffer.Jump = Input.bufferTime`
+to feed input; restore both in `try/finally`. **`preview_screenshot` times out on the live
+RAF canvas** — use `preview_eval` + `ctx.getImageData` pixel sampling for visual checks.
 
 ## Out of scope / follow-ups
 - Real sprite art (the player is a procedural unicycle now; no spritesheet). On-screen
