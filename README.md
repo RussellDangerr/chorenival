@@ -9,7 +9,8 @@ Play it live at [clowncity.russelldangerr.com](https://clowncity.russelldangerr.
 
 ## Status
 
-v0.2.1 — smoother rolling + a leaning unicycle (mobile-playable).
+v0.4.0 — three levels (The Big Top, The Catwalk, The Big Drop) with rideable
+slopes, wall-jump climbs, and a big-top finale. Mobile-playable.
 
 ## Play
 
@@ -35,6 +36,8 @@ an enemy from the side, is fatal.
 - Swipe / tap touch controls (plus keyboard parity) — fully mobile-playable
 - Brake-kick + stomp combat
 - Treadmill surfaces that cap speed at 0.5 and bleed momentum
+- Rideable 45° slopes — bomb downhill to bank "overspeed" that powers a bigger jump
+- Wall-slide / wall-jump shafts and an elevated catwalk traverse
 - Moving + one-way platforms, gaps, and patrol monsters
 - Coyote time + input buffering, squash & stretch, particles, screen shake/flash
 - Centralized design tokens in [`js/tokens.js`](js/tokens.js) — see [`DESIGN-SYSTEM.md`](DESIGN-SYSTEM.md)
